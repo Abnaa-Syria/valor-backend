@@ -8,6 +8,7 @@ import { paginated, toSkipTake, type Pagination } from '../../utils/pagination';
 import { adjustPurchased, getWallet } from '../credits/credits.service';
 import { awardGift } from '../gifts/popularity.service';
 import { getCreditPacks } from './catalog.service';
+import { isBlockedBetween } from '../blocks/blocks.service';
 
 /**
  * One endpoint for every store purchase (credit packs, gifts, frames, themes):
@@ -65,7 +66,8 @@ async function resolveGiftTarget(senderId: string, gift: PurchaseInput['gift']):
   if ('recipientId' in gift) {
     if (gift.recipientId === senderId) throw errors.badRequest("You can't send a gift to yourself");
     const recipient = await prisma.user.findUnique({ where: { id: gift.recipientId }, select: { status: true } });
-    if (!recipient || recipient.status === 'BANNED') throw errors.notFound('Player not found');
+    if (!recipient || recipient.status === 'BANNED' || recipient.status === 'DELETED') throw errors.notFound('Player not found');
+    if (await isBlockedBetween(senderId, gift.recipientId)) throw errors.notFound('Player not found');
     return { recipientId: gift.recipientId, battleId: null, battleSide: null, clipId: null };
   }
 
@@ -116,6 +118,10 @@ async function deliver(tx: Tx, userId: string, purchaseId: string, product: Prod
       });
       // Profile gifts land now; battle gifts when the battle ends (keeps the battle anonymous).
       if (!giftTx.battleId) await awardGift(tx, giftTx.id);
+      // Design 27: "Kairo's popularity 9,860 → 9,861" (profile gifts only; battle gifts stay anonymous).
+      const after = giftTx.battleId
+        ? null
+        : (await tx.user.findUniqueOrThrow({ where: { id: giftTx.recipientId }, select: { popularity: true } })).popularity;
       return {
         gift: {
           id: giftTx.id,
@@ -123,6 +129,7 @@ async function deliver(tx: Tx, userId: string, purchaseId: string, product: Prod
           quantity,
           popularity: giftTx.popularityAwarded,
           deliversWhenBattleEnds: Boolean(giftTx.battleId),
+          recipientPopularity: after === null ? null : { before: after - giftTx.popularityAwarded, after },
         },
       };
     }

@@ -160,7 +160,7 @@ export async function logout(refreshToken: string) {
 /** Always succeeds, so the response never reveals whether an email is registered. */
 export async function forgotPassword(email: string) {
   const user = await prisma.user.findUnique({ where: { email }, select: { id: true, status: true, passwordHash: true } });
-  if (!user || user.status === 'BANNED' || !user.passwordHash) return;
+  if (!user || user.status === 'BANNED' || user.status === 'DELETED' || !user.passwordHash) return;
 
   const token = randomToken(32);
   await prisma.passwordResetToken.create({

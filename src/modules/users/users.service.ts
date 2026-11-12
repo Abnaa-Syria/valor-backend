@@ -1,10 +1,12 @@
 import type { CreditType, Prisma, UserStatus } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
-import { errors } from '../../utils/app-error';
+import { AppError, errors } from '../../utils/app-error';
 import { paginated, toSkipTake } from '../../utils/pagination';
 import { getBattleStats } from '../battles/battles.service';
 import { adjustPurchased } from '../credits/credits.service';
 import { storage } from '../../lib/storage';
+import { env } from '../../config/env';
+import { isBlockedBetween } from '../blocks/blocks.service';
 import { IMAGES_PREFIX } from './image-upload';
 import type { ListUsersQuery } from './users.schemas';
 
@@ -42,7 +44,14 @@ export async function getMe(userId: string) {
   });
   const { _count, ...profile } = user;
   const [battles, games] = await Promise.all([getBattleStats(userId), playedGames(userId)]);
-  return { ...profile, games, battles, giftsReceived: _count.giftsReceived, friendsJoined: _count.referralsMade };
+  return {
+    ...profile,
+    inviteUrl: `${env.INVITE_BASE_URL.replace(/\/$/, '')}/${profile.referralCode}`,
+    games,
+    battles,
+    giftsReceived: _count.giftsReceived,
+    friendsJoined: _count.referralsMade,
+  };
 }
 
 export async function updateMe(userId: string, input: { username?: string; hideReferralCount?: boolean }) {
@@ -67,7 +76,8 @@ export async function setProfileImage(userId: string, field: 'avatar' | 'banner'
 }
 
 /** What other players see. Gift count stays hidden (design 16); referral count follows the player's setting. */
-export async function getPublicProfile(playerId: string) {
+export async function getPublicProfile(viewerId: string, playerId: string) {
+  if (await isBlockedBetween(viewerId, playerId)) throw errors.notFound('Player not found');
   const user = await prisma.user.findUnique({
     where: { id: playerId },
     select: {
@@ -83,7 +93,7 @@ export async function getPublicProfile(playerId: string) {
       _count: { select: { referralsMade: true } },
     },
   });
-  if (!user || user.status === 'BANNED') throw errors.notFound('Player not found');
+  if (!user || user.status === 'BANNED' || user.status === 'DELETED') throw errors.notFound('Player not found');
 
   const [battles, games] = await Promise.all([getBattleStats(playerId), playedGames(playerId)]);
   return {
@@ -139,7 +149,8 @@ export async function getUser(id: string) {
       balances: { select: { type: true, freeBalance: true, purchasedBalance: true } },
       badges: { select: { earnedAt: true, awardedById: true, badge: { select: { id: true, name: true, slug: true } } } },
       invitedVia: { select: { inviter: { select: { id: true, username: true } }, createdAt: true } },
-      _count: { select: { clips: true, votes: true, referralsMade: true, giftsReceived: true, giftsSent: true } },
+      deletedAt: true,
+      _count: { select: { clips: true, votes: true, referralsMade: true, giftsReceived: true, giftsSent: true, blockedBy: true } },
     },
   });
   if (!user) throw errors.notFound('User not found');
@@ -148,6 +159,9 @@ export async function getUser(id: string) {
 }
 
 export async function updateUserStatus(id: string, status: UserStatus) {
+  const current = await prisma.user.findUnique({ where: { id }, select: { status: true } });
+  if (!current) throw errors.notFound('User not found');
+  if (current.status === 'DELETED') throw new AppError(409, 'ACCOUNT_DELETED', 'This account was deleted by the player');
   const user = await prisma.user.update({ where: { id }, data: { status }, select: listSelect });
   // A suspended or banned player is signed out everywhere.
   if (status !== 'ACTIVE') {

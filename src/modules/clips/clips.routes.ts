@@ -10,6 +10,7 @@ import {
   updateClipSchema,
 } from './clips.schemas';
 import * as clipsService from './clips.service';
+import { limits } from '../../middlewares/user-rate-limit';
 
 // Mobile: /api/v1/clips
 const router = Router();
@@ -20,7 +21,7 @@ const router = Router();
  *   gameId · title · description? · durationSec? · battle? (JSON {"weaponClass","rank"})
  * Needs an Idempotency-Key header, because with `battle` it spends a Challenge Credit.
  */
-router.post('/', idempotent('clips.create'), clipUpload, async (req, res) => {
+router.post('/', limits.clipUpload, idempotent('clips.create'), clipUpload, async (req, res) => {
   // The service validates the fields itself, so it can delete the saved files if anything fails.
   const result = await clipsService.createClip(req.user!.id, req.body, uploadedFiles(req.files));
   res.status(201).json({ data: result });
@@ -48,12 +49,12 @@ router.delete('/:id', async (req, res) => {
   res.json({ data: { ok: true } });
 });
 
-router.post('/:id/like', async (req, res) => {
+router.post('/:id/like', limits.like, async (req, res) => {
   const { id } = clipIdParamsSchema.parse(req.params);
   res.json({ data: await clipsService.likeClip(req.user!.id, id) });
 });
 
-router.delete('/:id/like', async (req, res) => {
+router.delete('/:id/like', limits.like, async (req, res) => {
   const { id } = clipIdParamsSchema.parse(req.params);
   res.json({ data: await clipsService.unlikeClip(req.user!.id, id) });
 });
@@ -64,7 +65,7 @@ router.get('/:id/comments', async (req, res) => {
   res.json({ data: await clipsService.listComments(req.user!.id, id, query) });
 });
 
-router.post('/:id/comments', async (req, res) => {
+router.post('/:id/comments', limits.comment, async (req, res) => {
   const { id } = clipIdParamsSchema.parse(req.params);
   const { body } = createCommentSchema.parse(req.body);
   res.status(201).json({ data: await clipsService.addComment(req.user!.id, id, body) });

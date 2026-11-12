@@ -18,6 +18,8 @@ const envSchema = z.object({
   JWT_USER_EXPIRES_IN: z.string().default('15m'),
   REFRESH_TOKEN_DAYS: z.coerce.number().int().min(1).max(365).default(30),
   PASSWORD_RESET_URL: z.string().default('valor://reset-password'),
+  // Invite links: <INVITE_BASE_URL>/<referral code>
+  INVITE_BASE_URL: z.string().default('https://valor.gg/i'),
 
   CORS_ORIGINS: z.string().default('http://localhost:5173'),
 

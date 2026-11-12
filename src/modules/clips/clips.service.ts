@@ -9,6 +9,7 @@ import { getActiveGame } from '../games/games.service';
 import { createEntry, getEntry } from '../battles/matchmaking.service';
 import { cancelBattle } from '../battles/battles.service';
 import { checkBadges } from '../badges/badges.service';
+import { blockedUserIds, isBlockedBetween } from '../blocks/blocks.service';
 import { clipInclude, liveClipWhere, publicClipWhere, toClipDto } from './clip-dto';
 import { CLIPS_PREFIX } from './clip-upload';
 import { createClipSchema, type updateClipSchema } from './clips.schemas';
@@ -64,6 +65,7 @@ async function findVisibleClip(viewerId: string, clipId: string) {
   const isLive = clip.tickets.length > 0 || clip.battlesAsA.length > 0 || clip.battlesAsB.length > 0;
   // A live clip is hidden from everyone but its owner, so battles stay anonymous.
   if (clip.userId !== viewerId && (isLive || clip.status !== 'READY')) throw errors.notFound('Clip not found');
+  if (clip.userId !== viewerId && (await isBlockedBetween(viewerId, clip.userId))) throw errors.notFound('Clip not found');
   return clip;
 }
 
@@ -94,6 +96,7 @@ export async function listMyClips(userId: string, query: Pagination & { gameId?:
 /** Another player's public clips: live-battle clips are left out. */
 export async function listPlayerClips(viewerId: string, playerId: string, query: Pagination & { gameId?: string }) {
   if (viewerId === playerId) return listMyClips(viewerId, query);
+  if (await isBlockedBetween(viewerId, playerId)) throw errors.notFound('Player not found');
   return listClips(viewerId, { ...publicClipWhere, userId: playerId, gameId: query.gameId }, query);
 }
 
@@ -157,7 +160,8 @@ const commentSelect = {
 
 export async function listComments(viewerId: string, clipId: string, query: Pagination) {
   await findVisibleClip(viewerId, clipId);
-  const where: Prisma.CommentWhereInput = { clipId, status: 'VISIBLE' };
+  const hidden = await blockedUserIds(viewerId);
+  const where: Prisma.CommentWhereInput = { clipId, status: 'VISIBLE', ...(hidden.length > 0 && { userId: { notIn: hidden } }) };
   const [comments, total] = await prisma.$transaction([
     prisma.comment.findMany({ where, select: commentSelect, orderBy: { createdAt: 'desc' }, ...toSkipTake(query) }),
     prisma.comment.count({ where }),

@@ -65,6 +65,8 @@ src/
 | GET / PATCH | `/me` | profile, battle stats, games played, active frame / theme |
 | POST | `/me/avatar` · `/me/banner` | multipart `image` (jpeg / png / webp, 5 MB) |
 | GET | `/me/badges` · `/players/:id/badges` | earned + locked |
+| GET | `/me/blocks` · POST / DELETE `/players/:id/block` | block works both ways |
+| POST | `/me/delete` | `{password}` — deletes the account (store requirement) |
 | GET | `/me/popularity` | total, sources, gift collection |
 | GET | `/players/:id` · `/players/:id/clips` | public profile and clips (live-battle clips hidden) |
 | GET | `/games` | games with battle criteria |
@@ -131,5 +133,8 @@ src/
 - **Avatars** (`kind: AVATAR`) are ready-made profile pictures; applying one sets the player's avatar. One default per kind (frame / theme / avatar) is given to new players.
 - Every player shown in the app (battles after close, clips, comments, leaderboard, rematch) carries `activeFrame` so the ring can be drawn next to them.
 - **Notifications** are stored for the in-app bell (match found, results, gifts, friend joined, badges, rematch). Push comes with the mobile app.
+- **Blocking** is two-way: no profile, clips or comments between the two players, no comments / likes / profile gifts / rematch, never matched in a battle.
+- **Account deletion** erases personal data and cancels live activity with refunds to others; purchases, ledger, gift transactions, votes and clips from finished battles stay, anonymised.
+- **Rate limits**: per IP on auth, per player on every write (votes, uploads, entries, comments, likes, reports, purchases, block, images). In-memory — use a shared store with several servers.
 - **Undecided product values** live in `app_settings`, editable from the dashboard.
 - **Files** are stored on disk under `uploads/` (served at `/uploads`). Only keys are stored in the database, so moving to Cloudflare Stream / R2 means changing `src/lib/storage.ts`.

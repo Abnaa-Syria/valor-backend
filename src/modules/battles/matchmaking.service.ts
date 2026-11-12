@@ -62,12 +62,17 @@ async function tryMatch(tx: Tx, ticket: MatchmakingTicket, votingHours: number) 
   const now = new Date();
   // SKIP LOCKED: tickets another request is matching right now are ignored, not waited on.
   const rows = await tx.$queryRaw<{ id: string }[]>`
-    SELECT id FROM matchmaking_tickets
+    SELECT id FROM matchmaking_tickets t
     WHERE gameId = ${ticket.gameId}
       AND status = 'QUEUED'
       AND weaponClass = ${ticket.weaponClass}
       AND \`rank\` = ${ticket.rank}
       AND userId <> ${ticket.userId}
+      AND NOT EXISTS (
+        SELECT 1 FROM user_blocks b
+        WHERE (b.blockerId = ${ticket.userId} AND b.blockedId = t.userId)
+           OR (b.blockerId = t.userId AND b.blockedId = ${ticket.userId})
+      )
       AND id <> ${ticket.id}
       AND (expiresAt IS NULL OR expiresAt > ${now})
     ORDER BY createdAt ASC

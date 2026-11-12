@@ -12,8 +12,9 @@ export const userIdParamsSchema = z.object({
   id: z.string().min(1).max(30),
 });
 
+// DELETED is set only by the player deleting their account.
 export const updateUserStatusSchema = z.object({
-  status: z.enum(UserStatus),
+  status: z.enum(['ACTIVE', 'SUSPENDED', 'BANNED']),
 });
 
 export const updateMeSchema = z.object({

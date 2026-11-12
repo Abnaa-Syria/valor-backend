@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { idempotent } from '../../middlewares/idempotency';
 import * as rematchService from './rematch.service';
+import { limits } from '../../middlewares/user-rate-limit';
 
 // Mobile: /api/v1/rematches  (request one with POST /v1/battles/:id/rematch)
 const router = Router();
@@ -19,7 +20,7 @@ router.get('/:id', async (req, res) => {
 });
 
 /** Opponent accepts with their own clip; costs 1 Challenge Credit; the battle starts right away. */
-router.post('/:id/accept', idempotent('rematch.accept'), async (req, res) => {
+router.post('/:id/accept', limits.rematch, idempotent('rematch.accept'), async (req, res) => {
   const { id } = idParams.parse(req.params);
   const { clipId } = clipBody.parse(req.body);
   res.json({ data: await rematchService.acceptRematch(req.user!.id, id, clipId) });

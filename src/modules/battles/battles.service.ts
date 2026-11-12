@@ -8,6 +8,7 @@ import { notify } from '../notifications/notifications.service';
 import { awardBattleGifts } from '../gifts/popularity.service';
 import { checkBadges } from '../badges/badges.service';
 import { rematchStateFor } from './rematch.service';
+import { blockedUserIds } from '../blocks/blocks.service';
 import { playerSummarySelect } from '../users/player-select';
 
 /**
@@ -92,7 +93,13 @@ async function myVotes(userId: string, battleIds: string[]) {
 // ───────────── Mobile ─────────────
 
 export async function listActiveBattles(viewerId: string, query: Pagination & { gameId?: string }) {
-  const where: Prisma.BattleWhereInput = { status: 'ACTIVE', gameId: query.gameId, votingEndsAt: { gt: new Date() } };
+  const hidden = await blockedUserIds(viewerId);
+  const where: Prisma.BattleWhereInput = {
+    status: 'ACTIVE',
+    gameId: query.gameId,
+    votingEndsAt: { gt: new Date() },
+    ...(hidden.length > 0 && { clipA: { userId: { notIn: hidden } }, clipB: { userId: { notIn: hidden } } }),
+  };
   const [battles, total] = await prisma.$transaction([
     prisma.battle.findMany({ where, include: battleInclude, orderBy: { votingEndsAt: 'asc' }, ...toSkipTake(query) }),
     prisma.battle.count({ where }),
@@ -103,14 +110,15 @@ export async function listActiveBattles(viewerId: string, query: Pagination & { 
 
 /** Home "Featured battle": ends soonest, and the player can still vote in it. */
 export async function getFeaturedBattle(viewerId: string, gameId?: string) {
+  const hidden = await blockedUserIds(viewerId);
   const battle = await prisma.battle.findFirst({
     where: {
       status: 'ACTIVE',
       gameId,
       votingEndsAt: { gt: new Date() },
       votes: { none: { userId: viewerId } },
-      clipA: { userId: { not: viewerId } },
-      clipB: { userId: { not: viewerId } },
+      clipA: { userId: { notIn: [viewerId, ...hidden] } },
+      clipB: { userId: { notIn: [viewerId, ...hidden] } },
     },
     include: battleInclude,
     orderBy: { votingEndsAt: 'asc' },

@@ -23,7 +23,8 @@ export async function requireUser(req: Request, _res: Response, next: NextFuncti
   next();
 }
 
-export function assertActive(status: 'ACTIVE' | 'SUSPENDED' | 'BANNED') {
+export function assertActive(status: 'ACTIVE' | 'SUSPENDED' | 'BANNED' | 'DELETED') {
+  if (status === 'DELETED') throw new AppError(401, 'ACCOUNT_DELETED', 'This account was deleted');
   if (status === 'SUSPENDED') throw new AppError(403, 'ACCOUNT_SUSPENDED', 'This account is suspended');
   if (status === 'BANNED') throw new AppError(403, 'ACCOUNT_BANNED', 'This account is banned');
 }

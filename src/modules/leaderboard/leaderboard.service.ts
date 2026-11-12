@@ -31,7 +31,7 @@ function standingsSql(from: Date, gameId?: string) {
       FROM battles b JOIN clips c ON c.id = b.clipBId
       WHERE b.status = 'CLOSED' AND b.closedAt >= ${from} ${game}
     ) t
-    JOIN users u ON u.id = t.userId AND u.status <> 'BANNED'
+    JOIN users u ON u.id = t.userId AND u.status NOT IN ('BANNED', 'DELETED')
     GROUP BY t.userId`;
 }
 

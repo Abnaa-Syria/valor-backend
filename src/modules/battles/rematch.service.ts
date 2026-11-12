@@ -5,6 +5,7 @@ import { refund, spend } from '../credits/credits.service';
 import { getSettings } from '../settings/settings.service';
 import { notify } from '../notifications/notifications.service';
 import { liveClipWhere } from '../clips/clip-dto';
+import { isBlockedBetween } from '../blocks/blocks.service';
 import { playerSummarySelect } from '../users/player-select';
 
 /**
@@ -91,6 +92,9 @@ export async function requestRematch(userId: string, battleId: string, clipId: s
     if (Date.now() > windowEnds) throw new AppError(409, 'REMATCH_WINDOW_CLOSED', 'The time to ask for a rematch has passed');
 
     const opponentId = mySide === 'A' ? battle.clipB.userId : battle.clipA.userId;
+    if (await isBlockedBetween(userId, opponentId, tx)) {
+      throw new AppError(403, 'PLAYER_BLOCKED', "You can't challenge this player");
+    }
     await checkClip(tx, userId, clipId, battle.gameId, [battle.clipA.id, battle.clipB.id]);
 
     const created = await tx.rematch.create({

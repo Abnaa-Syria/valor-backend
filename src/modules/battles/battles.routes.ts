@@ -13,6 +13,7 @@ import * as battlesService from './battles.service';
 import * as matchmaking from './matchmaking.service';
 import * as rematchService from './rematch.service';
 import { z } from 'zod';
+import { limits } from '../../middlewares/user-rate-limit';
 
 const rematchBodySchema = z.object({ clipId: z.string().min(1).max(30) });
 
@@ -21,7 +22,7 @@ const router = Router();
 
 // ── Entries (matchmaking) ──
 
-router.post('/entries', idempotent('battles.entries.create'), async (req, res) => {
+router.post('/entries', limits.battleEntry, idempotent('battles.entries.create'), async (req, res) => {
   const input = createEntrySchema.parse(req.body);
   const result = await prisma.$transaction((tx) => matchmaking.createEntry(tx, { userId: req.user!.id, ...input }));
   const entry = await matchmaking.getEntry(req.user!.id, result.ticketId);
@@ -65,13 +66,13 @@ router.get('/:id', async (req, res) => {
 });
 
 /** Loser asks for a rematch with a new clip: { clipId }. Costs 1 Challenge Credit. */
-router.post('/:id/rematch', idempotent('battles.rematch'), async (req, res) => {
+router.post('/:id/rematch', limits.rematch, idempotent('battles.rematch'), async (req, res) => {
   const { id } = battleIdParamsSchema.parse(req.params);
   const { clipId } = rematchBodySchema.parse(req.body);
   res.status(201).json({ data: await rematchService.requestRematch(req.user!.id, id, clipId) });
 });
 
-router.post('/:id/votes', idempotent('battles.vote'), async (req, res) => {
+router.post('/:id/votes', limits.vote, idempotent('battles.vote'), async (req, res) => {
   const { id } = battleIdParamsSchema.parse(req.params);
   const { side } = voteSchema.parse(req.body);
   res.status(201).json({ data: await battlesService.castVote(req.user!.id, id, side) });
