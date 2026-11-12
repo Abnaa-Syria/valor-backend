@@ -1,0 +1,55 @@
+# VALOR API + MySQL on one server.
+#   docker compose up -d --build                      API on 127.0.0.1:4000 (put your own Nginx in front)
+#   docker compose --profile https up -d --build      also starts Caddy with automatic HTTPS for API_DOMAIN
+# Settings come from .env (copy .env.server.example).
+services:
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: valor
+      MYSQL_USER: valor
+      MYSQL_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?set DB_ROOT_PASSWORD in .env}
+    volumes:
+      - db-data:/var/lib/mysql
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', '127.0.0.1', '-u', 'root', '-p${DB_ROOT_PASSWORD}']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: mysql://valor:${DB_PASSWORD}@db:3306/valor
+      UPLOAD_DIR: /app/uploads
+    volumes:
+      - uploads:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - '127.0.0.1:${API_PORT:-4000}:4000'
+
+  caddy:
+    image: caddy:2
+    profiles: ['https']
+    restart: unless-stopped
+    environment:
+      API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN in .env}
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on:
+      - api
+
+volumes:
+  db-data:
+  uploads:
+  caddy-data:

@@ -6,7 +6,7 @@
  *
  * - Safe to run again: it first deletes the previous demo data (accounts ending in @demo.valor).
  * - Dates are spread over the last 90 days so lists, histories and charts are filled.
- * - Never runs when NODE_ENV=production.
+ * - Never runs when NODE_ENV=production, unless ALLOW_DEMO_SEED=true (staging servers).
  *
  * Videos: 10-second scenes from the Blender open movies "Tears of Steel" and "Sintel"
  * (© Blender Foundation, CC BY 3.0, mango.blender.org · durian.blender.org). See seed-assets/demo/CREDITS.md.
@@ -238,7 +238,9 @@ async function writeCredits(userIds: string[], daily: Record<CreditType, number>
 // ───────────── Main ─────────────
 
 async function main() {
-  if (process.env.NODE_ENV === 'production') throw new Error('The demo seed never runs in production.');
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DEMO_SEED !== 'true') {
+    throw new Error('The demo seed does not run in production. On a staging server set ALLOW_DEMO_SEED=true.');
+  }
 
   const [games, gifts, packs, cosmetics, badges, superAdmin] = await Promise.all([
     prisma.game.findMany({ where: { isActive: true }, orderBy: { sortOrder: 'asc' } }),
