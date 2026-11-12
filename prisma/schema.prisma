@@ -1,0 +1,727 @@
+// VALOR — database schema (MySQL 8)
+// Rule: money and credits are never edited in place. Every change is a ledger row.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ───────────────────────────── Enums ─────────────────────────────
+
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN
+  MODERATOR
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  BANNED
+}
+
+enum ClipStatus {
+  PROCESSING
+  READY
+  FAILED
+  REMOVED
+}
+
+enum CommentStatus {
+  VISIBLE
+  REMOVED
+}
+
+enum TicketStatus {
+  QUEUED
+  MATCHED
+  CANCELLED
+  EXPIRED
+}
+
+enum BattleStatus {
+  ACTIVE
+  CLOSED
+  CANCELLED
+}
+
+enum BattleSide {
+  A
+  B
+}
+
+enum CreditType {
+  VOTING
+  CHALLENGE
+}
+
+enum CreditSource {
+  FREE
+  PURCHASED
+}
+
+enum LedgerReason {
+  DAILY_ALLOWANCE
+  FREE_EXPIRED
+  PURCHASE
+  VOTE
+  BATTLE_ENTRY
+  MATCHMAKING_REFUND
+  ADMIN_ADJUSTMENT
+}
+
+enum StoreProvider {
+  APP_STORE
+  PLAY_STORE
+  TEST // development only (PAYMENTS_TEST_MODE)
+}
+
+enum PurchaseKind {
+  CREDIT_PACK
+  GIFT
+  COSMETIC
+}
+
+enum PurchaseStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum GiftKind {
+  GIFT
+  STICKER
+}
+
+enum GiftTier {
+  ENTRY
+  STANDARD
+  MID
+  ADVANCED
+  LEGENDARY
+}
+
+enum CosmeticKind {
+  FRAME // ring artwork around the avatar
+  THEME // app-wide color tokens
+  AVATAR // ready-made profile picture
+}
+
+enum PopularitySource {
+  GIFT
+  REFERRAL
+  ADMIN_ADJUSTMENT
+}
+
+enum RematchStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
+  CANCELLED
+}
+
+enum NotificationType {
+  MATCH_FOUND
+  BATTLE_RESULT
+  BATTLE_CANCELLED
+  ENTRY_EXPIRED
+  GIFT_RECEIVED
+  FRIEND_JOINED
+  BADGE_EARNED
+  REMATCH_REQUESTED
+  REMATCH_ACCEPTED
+  REMATCH_DECLINED
+  REMATCH_EXPIRED
+}
+
+enum ReportTarget {
+  CLIP
+  COMMENT
+  USER
+}
+
+enum ReportStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
+}
+
+// ──────────────────────── Admins (dashboard) ────────────────────────
+
+model Admin {
+  id           String    @id @default(cuid())
+  name         String    @db.VarChar(100)
+  email        String    @unique @db.VarChar(191)
+  passwordHash String    @db.VarChar(100)
+  role         AdminRole @default(ADMIN)
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  resolvedReports Report[]
+
+  @@map("admins")
+}
+
+// ───────────────────────────── Players ─────────────────────────────
+
+model User {
+  id                String     @id @default(cuid())
+  username          String     @unique @db.VarChar(30)
+  email             String     @unique @db.VarChar(191)
+  passwordHash      String?    @db.VarChar(100) // null for accounts from an external provider (later)
+  authUid           String?    @unique @db.VarChar(128) // id from an external auth provider (later)
+  avatarUrl         String?    @db.VarChar(500)
+  bannerUrl         String?    @db.VarChar(500)
+  status            UserStatus @default(ACTIVE)
+  popularity        Int        @default(0) // cached total of popularity_events
+  referralCode      String     @unique @db.VarChar(20)
+  hideReferralCount Boolean    @default(true)
+  activeFrameId     String?
+  activeThemeId     String?
+  lastSeenAt        DateTime?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  activeFrame      CosmeticItem?        @relation("ActiveFrame", fields: [activeFrameId], references: [id], onDelete: SetNull)
+  activeTheme      CosmeticItem?        @relation("ActiveTheme", fields: [activeThemeId], references: [id], onDelete: SetNull)
+  clips            Clip[]
+  likes            ClipLike[]
+  comments         Comment[]
+  tickets          MatchmakingTicket[]
+  votes            Vote[]
+  balances         CreditBalance[]
+  ledger           CreditLedgerEntry[]
+  purchases        Purchase[]
+  giftsSent        GiftTransaction[]    @relation("GiftSender")
+  giftsReceived    GiftTransaction[]    @relation("GiftRecipient")
+  cosmetics        UserCosmetic[]
+  badges           UserBadge[]
+  popularityEvents PopularityEvent[]
+  referralsMade    Referral[]           @relation("Inviter")
+  invitedVia       Referral?            @relation("Invitee")
+  reports          Report[]
+  idempotencyKeys  IdempotencyKey[]
+  refreshTokens    RefreshToken[]
+  passwordResets   PasswordResetToken[]
+  notifications    Notification[]
+  rematchesSent    Rematch[]            @relation("RematchChallenger")
+  rematchesGot     Rematch[]            @relation("RematchOpponent")
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("users")
+}
+
+// ────────────────────────── Games & clips ──────────────────────────
+
+model Game {
+  id        String   @id @default(cuid())
+  slug      String   @unique @db.VarChar(60)
+  name      String   @db.VarChar(100)
+  iconUrl   String?  @db.VarChar(500)
+  criteria  Json? // battle criteria set by VALOR per game, e.g. { weaponClasses: [], ranks: [] }
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  clips   Clip[]
+  tickets MatchmakingTicket[]
+  battles Battle[]
+
+  @@map("games")
+}
+
+model Clip {
+  id            String     @id @default(cuid())
+  userId        String
+  gameId        String
+  title         String     @db.VarChar(120)
+  description   String?    @db.VarChar(500)
+  videoKey      String     @unique @db.VarChar(191) // storage key; the URL is built by the storage driver
+  thumbnailKey  String?    @db.VarChar(191)
+  durationSec   Int?
+  status        ClipStatus @default(PROCESSING)
+  likesCount    Int        @default(0)
+  commentsCount Int        @default(0)
+  removedAt     DateTime?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  user                  User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game                  Game                @relation(fields: [gameId], references: [id])
+  likes                 ClipLike[]
+  comments              Comment[]
+  tickets               MatchmakingTicket[]
+  battlesAsA            Battle[]            @relation("ClipA")
+  battlesAsB            Battle[]            @relation("ClipB")
+  gifts                 GiftTransaction[]
+  rematchesAsChallenger Rematch[]           @relation("RematchChallengerClip")
+  rematchesAsOpponent   Rematch[]           @relation("RematchOpponentClip")
+
+  @@index([userId, createdAt])
+  @@index([gameId, status])
+  @@map("clips")
+}
+
+model ClipLike {
+  userId    String
+  clipId    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clip Clip @relation(fields: [clipId], references: [id], onDelete: Cascade)
+
+  @@id([userId, clipId])
+  @@index([clipId])
+  @@map("clip_likes")
+}
+
+model Comment {
+  id        String        @id @default(cuid())
+  clipId    String
+  userId    String
+  body      String        @db.VarChar(500)
+  status    CommentStatus @default(VISIBLE)
+  createdAt DateTime      @default(now())
+
+  clip Clip @relation(fields: [clipId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([clipId, createdAt])
+  @@map("comments")
+}
+
+// ───────────────────── Matchmaking, battles, votes ─────────────────────
+
+model MatchmakingTicket {
+  id          String       @id @default(cuid())
+  userId      String
+  clipId      String
+  gameId      String
+  weaponClass String       @db.VarChar(60)
+  rank        String       @db.VarChar(60)
+  status      TicketStatus @default(QUEUED)
+  battleId    String?
+  matchedAt   DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime     @default(now())
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clip   Clip    @relation(fields: [clipId], references: [id], onDelete: Cascade)
+  game   Game    @relation(fields: [gameId], references: [id])
+  battle Battle? @relation(fields: [battleId], references: [id], onDelete: SetNull)
+
+  @@index([gameId, status, weaponClass, rank, createdAt])
+  @@index([userId, status])
+  @@index([clipId, status])
+  @@index([status, expiresAt])
+  @@map("matchmaking_tickets")
+}
+
+model Battle {
+  id             String       @id @default(cuid())
+  gameId         String
+  clipAId        String
+  clipBId        String
+  status         BattleStatus @default(ACTIVE)
+  votingStartsAt DateTime
+  votingEndsAt   DateTime
+  closedAt       DateTime?
+  votesA         Int          @default(0)
+  votesB         Int          @default(0)
+  winnerSide     BattleSide? // null while active, or on a tie
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  game           Game                @relation(fields: [gameId], references: [id])
+  clipA          Clip                @relation("ClipA", fields: [clipAId], references: [id])
+  clipB          Clip                @relation("ClipB", fields: [clipBId], references: [id])
+  votes          Vote[]
+  tickets        MatchmakingTicket[]
+  gifts          GiftTransaction[]
+  rematchRequest Rematch?            @relation("RematchOriginal")
+  rematchOf      Rematch?            @relation("RematchBattle")
+
+  @@index([status, votingEndsAt])
+  @@index([gameId, status])
+  @@map("battles")
+}
+
+model Vote {
+  id        String     @id @default(cuid())
+  battleId  String
+  userId    String
+  side      BattleSide
+  createdAt DateTime   @default(now())
+
+  battle Battle @relation(fields: [battleId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([battleId, userId]) // one final vote per battle
+  @@index([userId, createdAt])
+  @@map("votes")
+}
+
+// ───────────────────────────── Credits ─────────────────────────────
+
+model CreditBalance {
+  id               String     @id @default(cuid())
+  userId           String
+  type             CreditType
+  freeBalance      Int        @default(0)
+  purchasedBalance Int        @default(0)
+  freeResetAt      DateTime? // last daily allowance grant
+  updatedAt        DateTime   @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type])
+  @@map("credit_balances")
+}
+
+model CreditLedgerEntry {
+  id        String       @id @default(cuid())
+  userId    String
+  type      CreditType
+  source    CreditSource
+  amount    Int // positive = added, negative = spent
+  reason    LedgerReason
+  refType   String?      @db.VarChar(30) // e.g. "battle", "purchase", "ticket"
+  refId     String?      @db.VarChar(30)
+  note      String?      @db.VarChar(255)
+  createdAt DateTime     @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type, createdAt])
+  @@index([refType, refId])
+  @@map("credit_ledger")
+}
+
+model CreditPack {
+  id             String     @id @default(cuid())
+  type           CreditType
+  credits        Int
+  priceSar       Decimal    @db.Decimal(10, 2)
+  storeProductId String     @unique @db.VarChar(100)
+  isActive       Boolean    @default(true)
+  sortOrder      Int        @default(0)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  @@map("credit_packs")
+}
+
+// ─────────────────────────── Purchases (IAP) ───────────────────────────
+
+model Purchase {
+  id                 String         @id @default(cuid())
+  userId             String
+  provider           StoreProvider
+  storeTransactionId String         @unique @db.VarChar(191)
+  storeProductId     String         @db.VarChar(100)
+  kind               PurchaseKind
+  refId              String?        @db.VarChar(30) // credit pack / gift / cosmetic id
+  quantity           Int            @default(1)
+  priceSar           Decimal        @db.Decimal(10, 2) // total paid
+  status             PurchaseStatus @default(PENDING)
+  rawPayload         Json?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  user  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  gifts GiftTransaction[]
+  items UserCosmetic[]
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@map("purchases")
+}
+
+// ─────────────────────── Gifts & popularity ───────────────────────
+
+model Gift {
+  id              String   @id @default(cuid())
+  slug            String   @unique @db.VarChar(60)
+  name            String   @db.VarChar(60)
+  kind            GiftKind
+  tier            GiftTier
+  priceSar        Decimal? @db.Decimal(10, 2) // null = price pending
+  popularityValue Int? // null = pending
+  iconUrl         String?  @db.VarChar(500)
+  storeProductId  String?  @unique @db.VarChar(100)
+  isActive        Boolean  @default(true)
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  transactions GiftTransaction[]
+
+  @@map("gifts")
+}
+
+model GiftTransaction {
+  id                String      @id @default(cuid())
+  giftId            String
+  senderId          String
+  recipientId       String
+  battleId          String? // set when sent to an anonymous clip inside a battle
+  battleSide        BattleSide?
+  clipId            String?
+  purchaseId        String?
+  quantity          Int         @default(1)
+  unitPriceSar      Decimal     @db.Decimal(10, 2)
+  popularityAwarded Int
+  awardedAt         DateTime? // when popularity reached the recipient (battle gifts: timing pending)
+  createdAt         DateTime    @default(now())
+
+  gift      Gift      @relation(fields: [giftId], references: [id])
+  sender    User      @relation("GiftSender", fields: [senderId], references: [id], onDelete: Cascade)
+  recipient User      @relation("GiftRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  battle    Battle?   @relation(fields: [battleId], references: [id], onDelete: SetNull)
+  clip      Clip?     @relation(fields: [clipId], references: [id], onDelete: SetNull)
+  purchase  Purchase? @relation(fields: [purchaseId], references: [id], onDelete: SetNull)
+
+  @@index([recipientId, createdAt])
+  @@index([senderId, createdAt])
+  @@map("gift_transactions")
+}
+
+model PopularityEvent {
+  id        String           @id @default(cuid())
+  userId    String
+  amount    Int
+  source    PopularitySource
+  refId     String?          @db.VarChar(30)
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("popularity_events")
+}
+
+// ───────────────────── Customization (frames & themes) ─────────────────────
+
+model CosmeticItem {
+  id             String       @id @default(cuid())
+  kind           CosmeticKind
+  slug           String       @unique @db.VarChar(60)
+  name           String       @db.VarChar(60)
+  isFree         Boolean      @default(false)
+  isDefault      Boolean      @default(false)
+  priceSar       Decimal?     @db.Decimal(10, 2) // null on a paid item = price pending
+  assetUrl       String?      @db.VarChar(500) // frame ring image / avatar image
+  metadata       Json? // THEME: { appearance, tokens } · FRAME: { glowColor, layout }
+  storeProductId String?      @unique @db.VarChar(100)
+  isActive       Boolean      @default(true)
+  sortOrder      Int          @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  owners           UserCosmetic[]
+  activeFrameUsers User[]         @relation("ActiveFrame")
+  activeThemeUsers User[]         @relation("ActiveTheme")
+
+  @@index([kind, isActive])
+  @@map("cosmetic_items")
+}
+
+model UserCosmetic {
+  userId     String
+  itemId     String
+  purchaseId String?
+  acquiredAt DateTime @default(now())
+
+  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  item     CosmeticItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  purchase Purchase?    @relation(fields: [purchaseId], references: [id], onDelete: SetNull)
+
+  @@id([userId, itemId])
+  @@map("user_cosmetics")
+}
+
+// ───────────────────── Referrals & badges ─────────────────────
+
+model Referral {
+  id            String   @id @default(cuid())
+  inviterId     String
+  inviteeId     String   @unique
+  pointsAwarded Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  inviter User @relation("Inviter", fields: [inviterId], references: [id], onDelete: Cascade)
+  invitee User @relation("Invitee", fields: [inviteeId], references: [id], onDelete: Cascade)
+
+  @@index([inviterId])
+  @@map("referrals")
+}
+
+model Badge {
+  id                String   @id @default(cuid())
+  slug              String   @unique @db.VarChar(60)
+  name              String   @db.VarChar(60)
+  description       String?  @db.VarChar(255)
+  iconUrl           String?  @db.VarChar(500)
+  criteria          Json?
+  isCriteriaPending Boolean  @default(false)
+  isActive          Boolean  @default(true)
+  sortOrder         Int      @default(0)
+  createdAt         DateTime @default(now())
+
+  holders UserBadge[]
+
+  @@map("badges")
+}
+
+model UserBadge {
+  userId      String
+  badgeId     String
+  earnedAt    DateTime @default(now())
+  awardedById String? // set when an admin awarded it by hand
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badge Badge @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+
+  @@id([userId, badgeId])
+  @@map("user_badges")
+}
+
+// ───────────────────── Rematch ─────────────────────
+
+// The loser of a finished battle challenges the winner to a new battle with new clips.
+model Rematch {
+  id               String        @id @default(cuid())
+  originalBattleId String        @unique // one rematch request per battle
+  challengerId     String
+  opponentId       String
+  challengerClipId String
+  opponentClipId   String?
+  battleId         String?       @unique // the new battle, once accepted
+  status           RematchStatus @default(PENDING)
+  expiresAt        DateTime
+  respondedAt      DateTime?
+  createdAt        DateTime      @default(now())
+
+  originalBattle Battle  @relation("RematchOriginal", fields: [originalBattleId], references: [id], onDelete: Cascade)
+  battle         Battle? @relation("RematchBattle", fields: [battleId], references: [id], onDelete: SetNull)
+  challenger     User    @relation("RematchChallenger", fields: [challengerId], references: [id], onDelete: Cascade)
+  opponent       User    @relation("RematchOpponent", fields: [opponentId], references: [id], onDelete: Cascade)
+  challengerClip Clip    @relation("RematchChallengerClip", fields: [challengerClipId], references: [id], onDelete: Cascade)
+  opponentClip   Clip?   @relation("RematchOpponentClip", fields: [opponentClipId], references: [id], onDelete: SetNull)
+
+  @@index([opponentId, status])
+  @@index([challengerId, status])
+  @@index([status, expiresAt])
+  @@map("rematches")
+}
+
+// ───────────────────── Notifications ─────────────────────
+
+// In-app notifications (the bell). Push delivery is added with the mobile app.
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String           @db.VarChar(120)
+  body      String           @db.VarChar(255)
+  data      Json? // ids the app needs to open the right screen
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+// ───────────────────── Moderation ─────────────────────
+
+model Report {
+  id             String       @id @default(cuid())
+  reporterId     String
+  targetType     ReportTarget
+  targetId       String       @db.VarChar(30)
+  reason         String       @db.VarChar(500)
+  status         ReportStatus @default(OPEN)
+  resolvedById   String?
+  resolvedAt     DateTime?
+  resolutionNote String?      @db.VarChar(500)
+  createdAt      DateTime     @default(now())
+
+  reporter   User   @relation(fields: [reporterId], references: [id], onDelete: Cascade)
+  resolvedBy Admin? @relation(fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([targetType, targetId])
+  @@map("reports")
+}
+
+// ───────────────────── Player auth tokens ─────────────────────
+
+// Refresh tokens are stored hashed; each refresh rotates (revokes the old one).
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique @db.VarChar(64)
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique @db.VarChar(64)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+// ───────────────────── System ─────────────────────
+
+// Stores the response of a write request so a retry never repeats a vote, entry or payment.
+model IdempotencyKey {
+  id           String   @id @default(cuid())
+  userId       String
+  key          String   @db.VarChar(100)
+  endpoint     String   @db.VarChar(100)
+  statusCode   Int?
+  responseBody Json?
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+  @@map("idempotency_keys")
+}
+
+// Values the client has not decided yet live here, editable from the dashboard.
+model AppSetting {
+  key         String   @id @db.VarChar(100)
+  value       Json
+  updatedById String?
+  updatedAt   DateTime @updatedAt
+
+  @@map("app_settings")
+}
