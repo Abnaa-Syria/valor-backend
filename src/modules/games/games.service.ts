@@ -1,6 +1,6 @@
 import type { Game, Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma';
-import { errors } from '../../utils/app-error';
+import { AppError, errors } from '../../utils/app-error';
 import { parseCriteria } from './games.schemas';
 import type { createGameSchema, updateGameSchema } from './games.schemas';
 import type { z } from 'zod';
@@ -44,4 +44,23 @@ export async function createGame(input: z.infer<typeof createGameSchema>) {
 
 export async function updateGame(id: string, input: z.infer<typeof updateGameSchema>) {
   return toGameDto(await prisma.game.update({ where: { id }, data: input }));
+}
+
+export async function getGame(id: string) {
+  const game = await prisma.game.findUnique({
+    where: { id },
+    include: { _count: { select: { clips: true, battles: true, tickets: true } } },
+  });
+  if (!game) throw errors.notFound('Game not found');
+  return { ...toGameDto(game), counts: game._count, createdAt: game.createdAt, updatedAt: game.updatedAt };
+}
+
+/** Only a game nobody used can be deleted; otherwise hide it (isActive = false). */
+export async function deleteGame(id: string) {
+  const game = await getGame(id);
+  if (game.counts.clips || game.counts.battles || game.counts.tickets) {
+    throw new AppError(409, 'IN_USE', 'This game has clips or battles — hide it instead of deleting');
+  }
+  await prisma.game.delete({ where: { id } });
+  return game;
 }

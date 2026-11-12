@@ -221,8 +221,9 @@ export async function getStoreFront(userId: string) {
 
 // ───────────── Dashboard ─────────────
 
-export async function adminListPurchases(query: Pagination & { status?: PurchaseStatus; kind?: PurchaseKind; q?: string }) {
+export async function adminListPurchases(query: Pagination & { status?: PurchaseStatus; kind?: PurchaseKind; q?: string; userId?: string }) {
   const where: Prisma.PurchaseWhereInput = {
+    userId: query.userId,
     status: query.status,
     kind: query.kind,
     ...(query.q && {

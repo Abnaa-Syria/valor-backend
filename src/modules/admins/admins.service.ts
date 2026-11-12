@@ -75,3 +75,25 @@ export async function updateAdmin(actorId: string, id: string, input: z.infer<ty
     select: listSelect,
   });
 }
+
+export async function getAdmin(id: string) {
+  const admin = await prisma.admin.findUnique({
+    where: { id },
+    select: { ...listSelect, updatedAt: true, _count: { select: { auditLogs: true } } },
+  });
+  if (!admin) throw errors.notFound('Admin not found');
+  return admin;
+}
+
+/** Deletes an admin account. Never yourself, never the last active super admin. */
+export async function deleteAdmin(actorId: string, id: string) {
+  const target = await prisma.admin.findUnique({ where: { id } });
+  if (!target) throw errors.notFound('Admin not found');
+  if (id === actorId) throw new AppError(409, 'CANNOT_DELETE_SELF', "You can't delete your own account");
+  if (target.role === 'SUPER_ADMIN' && target.isActive) {
+    const others = await prisma.admin.count({ where: { role: 'SUPER_ADMIN', isActive: true, id: { not: id } } });
+    if (others === 0) throw new AppError(409, 'LAST_SUPER_ADMIN', 'At least one active super admin is required');
+  }
+  await prisma.admin.delete({ where: { id } });
+  return target;
+}

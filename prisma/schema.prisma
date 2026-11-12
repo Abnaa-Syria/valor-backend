@@ -139,6 +139,7 @@ enum NotificationType {
   REMATCH_ACCEPTED
   REMATCH_DECLINED
   REMATCH_EXPIRED
+  ANNOUNCEMENT
 }
 
 enum ReportTarget {
@@ -167,6 +168,8 @@ model Admin {
   updatedAt    DateTime  @updatedAt
 
   resolvedReports Report[]
+  auditLogs       AdminAuditLog[]
+  announcements   Announcement[]
 
   @@map("admins")
 }
@@ -733,6 +736,42 @@ model IdempotencyKey {
 
   @@unique([userId, key])
   @@map("idempotency_keys")
+}
+
+// Every change an admin makes from the dashboard: who, what, when.
+model AdminAuditLog {
+  id         String   @id @default(cuid())
+  adminId    String
+  action     String   @db.VarChar(60) // e.g. "user.suspend", "battle.cancel", "gift.update"
+  entityType String   @db.VarChar(30)
+  entityId   String?  @db.VarChar(30)
+  summary    String   @db.VarChar(255)
+  details    Json?
+  createdAt  DateTime @default(now())
+
+  admin Admin @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@index([entityType, entityId])
+  @@index([adminId, createdAt])
+  @@map("admin_audit_logs")
+}
+
+// In-app announcements sent from the dashboard (delivered as ANNOUNCEMENT notifications).
+model Announcement {
+  id          String   @id @default(cuid())
+  title       String   @db.VarChar(120)
+  body        String   @db.VarChar(255)
+  audience    String   @db.VarChar(20) // "ALL" or "PLAYER"
+  userId      String?  @db.VarChar(30)
+  recipients  Int      @default(0)
+  createdById String
+  createdAt   DateTime @default(now())
+
+  createdBy Admin @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@map("announcements")
 }
 
 // Values the client has not decided yet live here, editable from the dashboard.

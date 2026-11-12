@@ -183,12 +183,17 @@ function assertPendingFor(rematch: Rematch | null, userId: string, role: 'oppone
 }
 
 /** Declined by the opponent, cancelled by the challenger, or expired by the job. Refunds the challenger. */
-async function closeRematch(rematchId: string, status: 'DECLINED' | 'CANCELLED' | 'EXPIRED', actorId?: string) {
+/** Dashboard: cancel any pending rematch (challenger refunded). */
+export async function adminCancelRematch(rematchId: string) {
+  await closeRematch(rematchId, 'CANCELLED', undefined, true);
+}
+
+async function closeRematch(rematchId: string, status: 'DECLINED' | 'CANCELLED' | 'EXPIRED', actorId?: string, byAdmin = false) {
   await prisma.$transaction(async (tx) => {
     const rematch = await lockRematch(tx, rematchId);
     if (status === 'DECLINED') assertPendingFor(rematch, actorId!, 'opponent');
     if (status === 'CANCELLED') {
-      if (!rematch || rematch.challengerId !== actorId) throw errors.notFound('Rematch not found');
+      if (!rematch || (!byAdmin && rematch.challengerId !== actorId)) throw errors.notFound('Rematch not found');
       if (rematch.status !== 'PENDING') throw new AppError(409, 'REMATCH_NOT_PENDING', 'This rematch is no longer waiting for an answer');
     }
     if (status === 'EXPIRED' && rematch?.status !== 'PENDING') return;

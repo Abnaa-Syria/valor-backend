@@ -57,8 +57,27 @@ async function describeTargets(reports: { targetType: ReportTarget; targetId: st
   return map;
 }
 
-export async function adminListReports(query: Pagination & { status?: ReportStatus; targetType?: ReportTarget }) {
-  const where: Prisma.ReportWhereInput = { status: query.status, targetType: query.targetType };
+export async function adminListReports(
+  query: Pagination & { status?: ReportStatus; targetType?: ReportTarget; involvesUserId?: string; targetId?: string },
+) {
+  let involves: Prisma.ReportWhereInput = {};
+  if (query.involvesUserId) {
+    // Reports made by the player, about the player, or about the player's clips / comments.
+    const userId = query.involvesUserId;
+    const [clips, comments] = await Promise.all([
+      prisma.clip.findMany({ where: { userId }, select: { id: true } }),
+      prisma.comment.findMany({ where: { userId }, select: { id: true } }),
+    ]);
+    involves = {
+      OR: [
+        { reporterId: userId },
+        { targetType: 'USER', targetId: userId },
+        { targetType: 'CLIP', targetId: { in: clips.map((c) => c.id) } },
+        { targetType: 'COMMENT', targetId: { in: comments.map((c) => c.id) } },
+      ],
+    };
+  }
+  const where: Prisma.ReportWhereInput = { status: query.status, targetType: query.targetType, targetId: query.targetId, ...involves };
   const [reports, total] = await prisma.$transaction([
     prisma.report.findMany({
       where,
@@ -93,4 +112,22 @@ export async function resolveReport(id: string, adminId: string, input: z.infer<
     data: { status: input.status, resolvedById: adminId, resolvedAt: new Date(), resolutionNote: input.note },
   });
   return prisma.report.findUniqueOrThrow({ where: { id } });
+}
+
+/** One report with what was reported and every other report about the same thing. */
+export async function adminGetReport(id: string) {
+  const report = await prisma.report.findUnique({
+    where: { id },
+    include: { reporter: { select: { id: true, username: true } }, resolvedBy: { select: { id: true, name: true } } },
+  });
+  if (!report) throw errors.notFound('Report not found');
+  const [targets, related] = await Promise.all([
+    describeTargets([report]),
+    prisma.report.findMany({
+      where: { targetType: report.targetType, targetId: report.targetId, id: { not: id } },
+      orderBy: { createdAt: 'desc' },
+      include: { reporter: { select: { id: true, username: true } } },
+    }),
+  ]);
+  return { ...report, target: targets.get(`${report.targetType}:${report.targetId}`) ?? null, related };
 }

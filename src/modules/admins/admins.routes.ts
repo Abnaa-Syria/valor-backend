@@ -23,4 +23,6 @@ export const adminsRouter = Router();
 adminsRouter.use(allowRoles('SUPER_ADMIN'));
 adminsRouter.get('/', controller.list);
 adminsRouter.post('/', controller.create);
+adminsRouter.get('/:id', controller.getOne);
 adminsRouter.patch('/:id', controller.update);
+adminsRouter.delete('/:id', controller.remove);

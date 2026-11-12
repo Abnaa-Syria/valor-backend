@@ -22,12 +22,14 @@ import usersAdminRoutes from './modules/users/users.admin.routes';
 import statsAdminRoutes from './modules/stats/stats.admin.routes';
 import settingsAdminRoutes from './modules/settings/settings.admin.routes';
 import gamesAdminRoutes from './modules/games/games.admin.routes';
-import clipsAdminRoutes from './modules/clips/clips.admin.routes';
-import battlesAdminRoutes from './modules/battles/battles.admin.routes';
+import { clipsAdminRouter, commentsAdminRouter } from './modules/clips/clips.admin.routes';
+import { battlesAdminRouter, entriesAdminRouter, rematchesAdminRouter } from './modules/battles/battles.admin.routes';
 import reportsAdminRoutes from './modules/reports/reports.admin.routes';
 import storeAdminRoutes from './modules/store/store.admin.routes';
 import badgesAdminRoutes from './modules/badges/badges.admin.routes';
 import uploadsAdminRoutes from './modules/uploads/uploads.admin.routes';
+import auditAdminRoutes from './modules/audit/audit.admin.routes';
+import announcementsAdminRoutes from './modules/announcements/announcements.admin.routes';
 
 // ── Mobile API: /api/v1/* ──
 const appRouter = Router();
@@ -54,14 +56,19 @@ adminRouter.use(requireAdmin()); // everything below needs a logged-in admin
 adminRouter.use('/stats', statsAdminRoutes);
 adminRouter.use('/users', usersAdminRoutes);
 adminRouter.use('/games', gamesAdminRoutes);
-adminRouter.use('/clips', clipsAdminRoutes);
-adminRouter.use('/battles', battlesAdminRoutes);
+adminRouter.use('/clips', clipsAdminRouter);
+adminRouter.use('/comments', commentsAdminRouter);
+adminRouter.use('/battles', battlesAdminRouter);
+adminRouter.use('/entries', entriesAdminRouter);
+adminRouter.use('/rematches', rematchesAdminRouter);
 adminRouter.use('/reports', reportsAdminRoutes);
 adminRouter.use('/store', storeAdminRoutes);
 adminRouter.use('/badges', badgesAdminRoutes);
 adminRouter.use('/settings', settingsAdminRoutes);
 adminRouter.use('/admins', adminsRouter);
 adminRouter.use('/uploads', uploadsAdminRoutes);
+adminRouter.use('/announcements', announcementsAdminRoutes);
+adminRouter.use('/audit', auditAdminRoutes);
 
 const router = Router();
 router.use('/health', healthRoutes);

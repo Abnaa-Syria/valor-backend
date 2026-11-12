@@ -229,7 +229,13 @@ export async function closeDueBattles(limit = 100) {
     take: limit,
   });
 
-  for (const { id } of due) {
+  for (const { id } of due) await closeBattle(id);
+  return due.length;
+}
+
+/** Counts the votes and closes one live battle. Used by the job and by "Close now" in the dashboard. */
+export async function closeBattle(id: string) {
+  {
     const players = await prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM battles WHERE id = ${id} FOR UPDATE`;
       const battle = await tx.battle.findUnique({
@@ -264,7 +270,6 @@ export async function closeDueBattles(limit = 100) {
     });
     for (const userId of players) await checkBadges(userId);
   }
-  return due.length;
 }
 
 // ───────────── Dashboard ─────────────
@@ -293,8 +298,12 @@ function toAdminBattle(battle: BattleWithClips) {
   };
 }
 
-export async function adminListBattles(query: Pagination & { gameId?: string; status?: BattleStatus }) {
-  const where: Prisma.BattleWhereInput = { gameId: query.gameId, status: query.status };
+export async function adminListBattles(query: Pagination & { gameId?: string; status?: BattleStatus; userId?: string }) {
+  const where: Prisma.BattleWhereInput = {
+    gameId: query.gameId,
+    status: query.status,
+    ...(query.userId && { OR: [{ clipA: { userId: query.userId } }, { clipB: { userId: query.userId } }] }),
+  };
   const [battles, total] = await prisma.$transaction([
     prisma.battle.findMany({ where, include: battleInclude, orderBy: { createdAt: 'desc' }, ...toSkipTake(query) }),
     prisma.battle.count({ where }),

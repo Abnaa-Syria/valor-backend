@@ -25,6 +25,7 @@ export const historyQuerySchema = paginationSchema.extend({
 });
 
 export const adminBattlesQuerySchema = paginationSchema.extend({
+  userId: z.string().min(1).max(30).optional(),
   gameId: z.string().min(1).max(30).optional(),
   status: z.enum(BattleStatus).optional(),
 });

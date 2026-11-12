@@ -201,10 +201,11 @@ export async function removeComment(commentId: string) {
 
 // ───────────── Dashboard ─────────────
 
-export async function adminListClips(query: Pagination & { gameId?: string; status?: ClipStatus; q?: string }) {
+export async function adminListClips(query: Pagination & { gameId?: string; status?: ClipStatus; q?: string; userId?: string }) {
   const where: Prisma.ClipWhereInput = {
     gameId: query.gameId,
     status: query.status,
+    userId: query.userId,
     ...(query.q && { OR: [{ title: { contains: query.q } }, { user: { username: { contains: query.q } } }] }),
   };
   const [clips, total] = await prisma.$transaction([

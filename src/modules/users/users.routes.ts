@@ -43,7 +43,7 @@ router.get('/me/blocks', async (req, res) => {
 /** Delete my account (App Store / Google Play requirement). Body: { password }. */
 router.post('/me/delete', async (req, res) => {
   const { password } = z.object({ password: z.string().min(1).max(100) }).parse(req.body);
-  await deleteAccount(req.user!.id, password);
+  await deleteAccount(req.user!.id, { password });
   res.json({ data: { deleted: true } });
 });
 

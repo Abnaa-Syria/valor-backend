@@ -9,6 +9,8 @@ export const createReportSchema = z.object({
 });
 
 export const adminReportsQuerySchema = paginationSchema.extend({
+  involvesUserId: z.string().min(1).max(30).optional(),
+  targetId: z.string().min(1).max(30).optional(),
   status: z.enum(ReportStatus).optional(),
   targetType: z.enum(ReportTarget).optional(),
 });

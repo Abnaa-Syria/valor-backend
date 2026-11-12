@@ -145,3 +145,27 @@ export async function awardBadge(userId: string, badgeId: string, adminId: strin
 export async function revokeBadge(userId: string, badgeId: string) {
   await prisma.userBadge.deleteMany({ where: { userId, badgeId } });
 }
+
+export async function adminGetBadge(id: string) {
+  const badge = await prisma.badge.findUnique({
+    where: { id },
+    include: {
+      holders: {
+        orderBy: { earnedAt: 'desc' },
+        take: 200,
+        select: { earnedAt: true, awardedById: true, user: { select: { id: true, username: true, avatarUrl: true } } },
+      },
+      _count: { select: { holders: true } },
+    },
+  });
+  if (!badge) throw errors.notFound('Badge not found');
+  return badge;
+}
+
+/** Only a badge nobody holds can be deleted; otherwise hide it. */
+export async function deleteBadge(id: string) {
+  const badge = await adminGetBadge(id);
+  if (badge._count.holders) throw new AppError(409, 'IN_USE', 'Players hold this badge — hide it instead of deleting');
+  await prisma.badge.delete({ where: { id } });
+  return badge;
+}

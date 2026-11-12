@@ -105,12 +105,49 @@ export const adminCatalog = {
   createPack: (input: z.infer<typeof packInputSchema>) => prisma.creditPack.create({ data: input }),
   updatePack: (id: string, input: Partial<z.infer<typeof packInputSchema>>) => prisma.creditPack.update({ where: { id }, data: input }),
 
+  getPack: async (id: string) => {
+    const pack = await prisma.creditPack.findUnique({ where: { id } });
+    if (!pack) throw new AppError(404, 'NOT_FOUND', 'Credit pack not found');
+    const sold = await prisma.purchase.count({ where: { storeProductId: pack.storeProductId, status: 'COMPLETED' } });
+    return { ...pack, sold };
+  },
+  deletePack: async (id: string) => {
+    const pack = await prisma.creditPack.findUniqueOrThrow({ where: { id } });
+    const sold = await prisma.purchase.count({ where: { storeProductId: pack.storeProductId } });
+    if (sold) throw new AppError(409, 'IN_USE', 'This pack has purchases — hide it instead of deleting');
+    await prisma.creditPack.delete({ where: { id } });
+    return pack;
+  },
+
   listGifts: () => prisma.gift.findMany({ orderBy: [{ tier: 'asc' }, ...order] }),
+  getGift: async (id: string) => {
+    const gift = await prisma.gift.findUnique({ where: { id }, include: { _count: { select: { transactions: true } } } });
+    if (!gift) throw new AppError(404, 'NOT_FOUND', 'Gift not found');
+    return gift;
+  },
+  deleteGift: async (id: string) => {
+    const gift = await prisma.gift.findUniqueOrThrow({ where: { id }, include: { _count: { select: { transactions: true } } } });
+    if (gift._count.transactions) throw new AppError(409, 'IN_USE', 'This gift has been sent — hide it instead of deleting');
+    await prisma.gift.delete({ where: { id } });
+    return gift;
+  },
   createGift: (input: z.infer<typeof giftInputSchema>) => prisma.gift.create({ data: input }),
   updateGift: (id: string, input: Partial<z.infer<typeof giftInputSchema>>) => prisma.gift.update({ where: { id }, data: input }),
 
   listCosmetics: () =>
     prisma.cosmeticItem.findMany({ orderBy: [{ kind: 'asc' }, ...order], include: { _count: { select: { owners: true } } } }),
+  getCosmetic: async (id: string) => {
+    const item = await prisma.cosmeticItem.findUnique({ where: { id }, include: { _count: { select: { owners: true } } } });
+    if (!item) throw new AppError(404, 'NOT_FOUND', 'Item not found');
+    return item;
+  },
+  deleteCosmetic: async (id: string) => {
+    const item = await prisma.cosmeticItem.findUniqueOrThrow({ where: { id }, include: { _count: { select: { owners: true } } } });
+    if (item._count.owners) throw new AppError(409, 'IN_USE', 'Players own this item — hide it instead of deleting');
+    if (item.isDefault) throw new AppError(409, 'IS_DEFAULT', 'Choose another default before deleting this one');
+    await prisma.cosmeticItem.delete({ where: { id } });
+    return item;
+  },
   createCosmetic: async ({ metadata, ...input }: z.infer<typeof cosmeticInputSchema>) => {
     const design = metadata === undefined || metadata === null ? null : parseCosmeticMetadata(input.kind, metadata);
     assertReadyToShow(input.kind, input.isActive, input.assetUrl ?? null, design);

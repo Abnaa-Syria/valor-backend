@@ -21,10 +21,13 @@ import { IMAGES_PREFIX } from './image-upload';
  * - Kept for legal / accounting reasons, without personal data: purchases, the credit ledger,
  *   gift transactions and votes (anonymous, needed for battle results).
  */
-export async function deleteAccount(userId: string, password: string) {
+export async function deleteAccount(userId: string, confirm: { password: string } | { byAdmin: true }) {
   const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
-  const valid = user.passwordHash ? await bcrypt.compare(password, user.passwordHash) : false;
-  if (!valid) throw new AppError(400, 'WRONG_PASSWORD', 'Password is incorrect');
+  if (user.status === 'DELETED') throw new AppError(409, 'ACCOUNT_DELETED', 'This account was already deleted');
+  if ('password' in confirm) {
+    const valid = user.passwordHash ? await bcrypt.compare(confirm.password, user.passwordHash) : false;
+    if (!valid) throw new AppError(400, 'WRONG_PASSWORD', 'Password is incorrect');
+  }
 
   const filesToDelete: (string | null)[] = [];
 
