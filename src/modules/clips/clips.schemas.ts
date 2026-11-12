@@ -49,3 +49,7 @@ export const adminClipsQuerySchema = paginationSchema.extend({
   status: z.enum(ClipStatus).optional(),
   q: z.string().trim().max(100).optional(),
 });
+
+export const feedQuerySchema = galleryQuerySchema.extend({
+  sort: z.enum(['trending', 'latest']).default('trending'),
+});

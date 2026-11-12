@@ -75,9 +75,14 @@ export async function getClip(viewerId: string, clipId: string) {
   return toClipDto(clip, { likedByMe: Boolean(liked) });
 }
 
-async function listClips(viewerId: string, where: Prisma.ClipWhereInput, query: Pagination) {
+async function listClips(
+  viewerId: string,
+  where: Prisma.ClipWhereInput,
+  query: Pagination,
+  orderBy: Prisma.ClipOrderByWithRelationInput[] = [{ createdAt: 'desc' }],
+) {
   const [clips, total] = await prisma.$transaction([
-    prisma.clip.findMany({ where, include: clipInclude, orderBy: { createdAt: 'desc' }, ...toSkipTake(query) }),
+    prisma.clip.findMany({ where, include: clipInclude, orderBy, ...toSkipTake(query) }),
     prisma.clip.count({ where }),
   ]);
   const liked = await prisma.clipLike.findMany({
@@ -86,6 +91,24 @@ async function listClips(viewerId: string, where: Prisma.ClipWhereInput, query: 
   });
   const likedIds = new Set(liked.map((l) => l.clipId));
   return paginated(clips.map((clip) => toClipDto(clip, { likedByMe: likedIds.has(clip.id) })), total, query);
+}
+
+/**
+ * Home feed of public clips (never clips in a live battle, never blocked players).
+ * "trending" = most liked among the last 14 days, then newest; "latest" = newest first.
+ */
+export async function listFeed(viewerId: string, query: Pagination & { gameId?: string; sort: 'trending' | 'latest' }) {
+  const hidden = await blockedUserIds(viewerId);
+  const where: Prisma.ClipWhereInput = {
+    ...publicClipWhere,
+    gameId: query.gameId,
+    user: { status: 'ACTIVE' },
+    ...(hidden.length > 0 && { userId: { notIn: hidden } }),
+    ...(query.sort === 'trending' && { createdAt: { gte: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000) } }),
+  };
+  const orderBy: Prisma.ClipOrderByWithRelationInput[] =
+    query.sort === 'trending' ? [{ likesCount: 'desc' }, { commentsCount: 'desc' }, { createdAt: 'desc' }] : [{ createdAt: 'desc' }];
+  return listClips(viewerId, where, query, orderBy);
 }
 
 /** My gallery: everything I published, including clips in a live battle (flagged in `live`). */

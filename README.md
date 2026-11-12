@@ -75,6 +75,7 @@ src/
 | GET | `/games` | games with battle criteria |
 | GET | `/wallet` · `/wallet/transactions?type=` | balances and ledger |
 | POST | `/clips` | multipart: `video`, `thumbnail?`, `gameId`, `title`, `description?`, `durationSec?`, `battle?` (JSON `{weaponClass, rank}`) · Idempotency-Key |
+| GET | `/clips?sort=trending|latest&gameId=` | public feed for Home (no live-battle clips, no blocked players) |
 | GET | `/clips/mine?gameId=` | my gallery (live clips flagged in `live`) |
 | GET / PATCH / DELETE | `/clips/:id` | |
 | POST / DELETE | `/clips/:id/like` | |

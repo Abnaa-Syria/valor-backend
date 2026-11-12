@@ -6,6 +6,7 @@ import {
   clipIdParamsSchema,
   commentParamsSchema,
   createCommentSchema,
+  feedQuerySchema,
   galleryQuerySchema,
   updateClipSchema,
 } from './clips.schemas';
@@ -25,6 +26,12 @@ router.post('/', limits.clipUpload, idempotent('clips.create'), clipUpload, asyn
   // The service validates the fields itself, so it can delete the saved files if anything fails.
   const result = await clipsService.createClip(req.user!.id, req.body, uploadedFiles(req.files));
   res.status(201).json({ data: result });
+});
+
+/** Public feed for Home: ?sort=trending|latest&gameId= */
+router.get('/', async (req, res) => {
+  const query = feedQuerySchema.parse(req.query);
+  res.json({ data: await clipsService.listFeed(req.user!.id, query) });
 });
 
 router.get('/mine', async (req, res) => {
