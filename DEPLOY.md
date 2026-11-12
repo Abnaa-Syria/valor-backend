@@ -1,4 +1,31 @@
-# Deploying the API (staging server)
+# Deploying the API
+
+## Current staging: shared server (PM2 + Apache)
+
+| | |
+|---|---|
+| URL | https://valor-api.nodeteam.site/api (health: `/api/health`) |
+| Folder | `/var/www/valor-api.nodeteam.site` (settings in `.env` there) |
+| Process | PM2 app `valor-api`, port 4123 |
+| Database | MySQL `valor_db`, user `valor` (only this database) |
+| Web | Apache vhost `valor-api.nodeteam.site` → 127.0.0.1:4123, Let's Encrypt via certbot |
+| Dashboard | https://valor-dashboard-virid.vercel.app (Vercel, `VITE_API_URL=https://valor-api.nodeteam.site/api`) |
+
+Update to a new version (on the server):
+
+```bash
+cd /var/www/valor-api.nodeteam.site
+# get the new code (git pull, or upload a fresh copy without overwriting .env and uploads/)
+npm ci && npx prisma generate && npm run build
+npx prisma migrate deploy
+pm2 restart valor-api
+```
+
+Reload demo data: `npm run db:seed:demo` · Logs: `pm2 logs valor-api`.
+
+---
+
+## Alternative: a dedicated server with Docker
 
 The API and MySQL run in Docker on one Linux server. Uploaded videos and images are kept in a Docker volume.
 
