@@ -9,6 +9,7 @@ npm install
 cp .env.example .env        # then set DATABASE_URL, JWT_ADMIN_SECRET, JWT_USER_SECRET
 npm run db:migrate          # creates the tables
 npm run db:seed             # super admin + games, packs, gifts, frames, themes, badges
+npm run db:seed:demo        # optional: full demo data for testing (see below)
 npm run dev                 # http://localhost:4000/api
 ```
 
@@ -22,6 +23,7 @@ npm run dev                 # http://localhost:4000/api
 | `npm run db:migrate` | Create a migration from `schema.prisma` and apply it (development) |
 | `npm run db:deploy` | Apply migrations (production) |
 | `npm run db:seed` | Seed reference data |
+| `npm run db:seed:demo` | Fill the database with demo data (players, real video clips, battles…) |
 | `npm run db:studio` | Browse the database |
 
 ## Structure
@@ -31,6 +33,7 @@ prisma/
   schema.prisma     database schema
   migrations/       migration history — always commit
   seed.ts           reference data from the design
+  demo-seed.ts      demo data for testing (accounts end in @demo.valor)
 src/
   config/           env validation
   lib/              prisma, logger, jwt, crypto, storage (uploads), mailer
@@ -138,3 +141,19 @@ src/
 - **Rate limits**: per IP on auth, per player on every write (votes, uploads, entries, comments, likes, reports, purchases, block, images). In-memory — use a shared store with several servers.
 - **Undecided product values** live in `app_settings`, editable from the dashboard.
 - **Files** are stored on disk under `uploads/` (served at `/uploads`). Only keys are stored in the database, so moving to Cloudflare Stream / R2 means changing `src/lib/storage.ts`.
+
+## Demo data
+
+`npm run db:seed:demo` (after `npm run db:seed`) fills every screen with realistic data spread over the last 90 days. Run it again any time: it deletes the previous demo first. It never runs with `NODE_ENV=production`.
+
+| What | Details |
+|---|---|
+| Players | 25 (`<username>@demo.valor`, password `Valor12345!`), e.g. `shadowvex@demo.valor`, `kaistorm@demo.valor`. One suspended (GhostLark), one banned (OnyxReef), one deleted account, two who joined today |
+| Admins | `layla@demo.valor` (Admin), `omar@demo.valor` (Moderator), `sara@demo.valor` (disabled) · password `Valor12345!` |
+| Clips | ~130 with real 10-second videos and thumbnails (14 scenes from Blender open movies, CC BY — `prisma/seed-assets/demo/CREDITS.md`) |
+| Battles | ~33 finished, 7 live (ending at different times), 2 cancelled, ~300 votes; 4 entries waiting for an opponent, expired and cancelled entries |
+| Rematches | one of each: pending, accepted (live), declined, expired |
+| Economy | credit pack and gift purchases (incl. failed, pending and refunded), battle and profile gifts, a Legend gift, a full credit ledger whose totals match every wallet |
+| Community | likes, comments (some removed), reports (open / resolved / dismissed), blocks, referrals, badges, announcements, notifications, admin activity log |
+
+Files go to `uploads/demo/` (hard links to `prisma/seed-assets/demo/`, so no extra disk space).
