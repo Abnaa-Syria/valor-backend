@@ -145,6 +145,8 @@ export async function getUser(id: string) {
     select: {
       ...listSelect,
       referralCode: true,
+      hideReferralCount: true,
+      bannerUrl: true,
       updatedAt: true,
       balances: { select: { type: true, freeBalance: true, purchasedBalance: true } },
       badges: { select: { earnedAt: true, awardedById: true, badge: { select: { id: true, name: true, slug: true } } } },
