@@ -50,10 +50,12 @@ export async function getLeaderboard(viewerId: string, period: Period, gameId?: 
     select: playerSummarySelect,
   });
   const byId = new Map(players.map((p) => [p.id, p]));
+  const mainGames = await mainGameByPlayer([...top.map((r) => r.userId), viewerId], from);
 
   const items = top.map((row, index) => ({
     rank: index + 1,
     player: byId.get(row.userId)!,
+    mainGame: mainGames.get(row.userId) ?? null,
     wins: Number(row.wins),
     votes: Number(row.votes ?? 0),
     battles: Number(row.battles),
@@ -69,9 +71,27 @@ export async function getLeaderboard(viewerId: string, period: Period, gameId?: 
       const ahead = await prisma.$queryRaw<{ n: bigint }[]>`
         SELECT COUNT(*) AS n FROM (${standings}) s
         WHERE s.wins > ${wins} OR (s.wins = ${wins} AND s.votes > ${votes})`;
-      me = { rank: Number(ahead[0].n) + 1, player: byId.get(viewerId)!, wins, votes, battles: Number(mine[0].battles) };
+      me = { rank: Number(ahead[0].n) + 1, player: byId.get(viewerId)!, mainGame: mainGames.get(viewerId) ?? null, wins, votes, battles: Number(mine[0].battles) };
     }
   }
 
   return { period, from, gameId: gameId ?? null, items, me };
+}
+
+/** The game each player battled in most during the period (design 13 shows it under the name). */
+async function mainGameByPlayer(userIds: string[], from: Date) {
+  const result = new Map<string, { id: string; name: string }>();
+  if (userIds.length === 0) return result;
+  const rows = await prisma.$queryRaw<{ userId: string; gameId: string; name: string; n: bigint | number }[]>`
+    SELECT c.userId, g.id AS gameId, g.name, COUNT(*) AS n
+    FROM battles b
+    JOIN clips c ON c.id = b.clipAId OR c.id = b.clipBId
+    JOIN games g ON g.id = b.gameId
+    WHERE b.status = 'CLOSED' AND b.closedAt >= ${from} AND c.userId IN (${Prisma.join(userIds)})
+    GROUP BY c.userId, g.id, g.name
+    ORDER BY n DESC, g.name ASC`;
+  for (const row of rows) {
+    if (!result.has(row.userId)) result.set(row.userId, { id: row.gameId, name: row.name });
+  }
+  return result;
 }
