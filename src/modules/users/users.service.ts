@@ -7,6 +7,7 @@ import { adjustPurchased } from '../credits/credits.service';
 import { storage } from '../../lib/storage';
 import { env } from '../../config/env';
 import { isBlockedBetween } from '../blocks/blocks.service';
+import { getSetting } from '../settings/settings.service';
 import { IMAGES_PREFIX } from './image-upload';
 import type { ListUsersQuery } from './users.schemas';
 
@@ -43,10 +44,18 @@ export async function getMe(userId: string) {
     },
   });
   const { _count, ...profile } = user;
-  const [battles, games] = await Promise.all([getBattleStats(userId), playedGames(userId)]);
+  const [battles, games, referralPoints, referralEarned] = await Promise.all([
+    getBattleStats(userId),
+    playedGames(userId),
+    getSetting('referralPopularityPoints'),
+    prisma.popularityEvent.aggregate({ where: { userId, source: 'REFERRAL' }, _sum: { amount: true } }),
+  ]);
   return {
     ...profile,
     inviteUrl: `${env.INVITE_BASE_URL.replace(/\/$/, '')}/${profile.referralCode}`,
+    // Invite friends screen (design 18): points per friend now, and points earned so far.
+    referralPoints,
+    referralPointsEarned: referralEarned._sum.amount ?? 0,
     games,
     battles,
     giftsReceived: _count.giftsReceived,
