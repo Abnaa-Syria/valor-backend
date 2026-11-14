@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { deviceSchema, registerDevice, unregisterDevice } from '../notifications/push.service';
 import { z } from 'zod';
 import { limits } from '../../middlewares/user-rate-limit';
 import { galleryQuerySchema } from '../clips/clips.schemas';
@@ -41,6 +42,15 @@ router.get('/me/blocks', async (req, res) => {
 });
 
 /** Delete my account (App Store / Google Play requirement). Body: { password }. */
+/** Push notifications: register this phone (FCM token) / forget it on sign-out. */
+router.post('/me/devices', async (req, res) => {
+  res.json({ data: await registerDevice(req.user!.id, deviceSchema.parse(req.body)) });
+});
+router.delete('/me/devices', async (req, res) => {
+  const { token } = deviceSchema.pick({ token: true }).parse(req.body ?? {});
+  res.json({ data: await unregisterDevice(req.user!.id, token) });
+});
+
 router.post('/me/delete', async (req, res) => {
   const { password } = z.object({ password: z.string().min(1).max(100) }).parse(req.body);
   await deleteAccount(req.user!.id, { password });

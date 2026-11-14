@@ -31,6 +31,9 @@ const envSchema = z.object({
 
   JOBS_ENABLED: booleanString,
   JOBS_INTERVAL_SECONDS: z.coerce.number().int().min(5).max(3600).default(30),
+  // Push notifications (Firebase Cloud Messaging): the service-account JSON, or a path to the file. Empty = push off.
+  FIREBASE_SERVICE_ACCOUNT: z.string().optional(),
+  PUSH_INTERVAL_SECONDS: z.coerce.number().int().min(2).max(300).default(5),
 });
 
 const parsed = envSchema.safeParse(process.env);

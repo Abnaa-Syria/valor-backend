@@ -91,6 +91,7 @@ export async function deleteAccount(userId: string, confirm: { password: string 
       await tx.userBlock.deleteMany({ where: { OR: [{ blockerId: userId }, { blockedId: userId }] } });
       await tx.notification.deleteMany({ where: { userId } });
       await tx.refreshToken.deleteMany({ where: { userId } });
+      await tx.deviceToken.deleteMany({ where: { userId } });
       await tx.passwordResetToken.deleteMany({ where: { userId } });
       await tx.idempotencyKey.deleteMany({ where: { userId } });
       await tx.userCosmetic.deleteMany({ where: { userId } });
