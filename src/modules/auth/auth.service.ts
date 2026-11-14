@@ -61,7 +61,7 @@ export async function register(input: { username: string; email: string; passwor
   const passwordHash = await bcrypt.hash(input.password, BCRYPT_ROUNDS);
   const referralPoints = await getSetting('referralPopularityPoints');
 
-  const { user, referral } = await prisma.$transaction(async (tx) => {
+  const { user, referral, inviterName } = await prisma.$transaction(async (tx) => {
     // Every player starts with the default frame, theme and avatar (Origin, VALOR Night, …).
     const defaults = await tx.cosmeticItem.findMany({ where: { isDefault: true, ...readyWhere } });
     const defaultFrame = defaults.find((item) => item.kind === 'FRAME');
@@ -83,16 +83,18 @@ export async function register(input: { username: string; email: string; passwor
     });
 
     let referral: ReferralResult = 'NONE';
+    let inviterName: string | null = null;
     if (input.referralCode) {
       const inviter = await tx.user.findUnique({
         where: { referralCode: input.referralCode },
-        select: { id: true, status: true },
+        select: { id: true, status: true, username: true },
       });
       // An invalid or unusable code never blocks sign-up (design: 00h1 / 00i1).
       if (!inviter || inviter.status !== 'ACTIVE') {
         referral = 'INVALID';
       } else {
         referral = 'APPLIED';
+        inviterName = inviter.username;
         await tx.referral.create({ data: { inviterId: inviter.id, inviteeId: user.id, pointsAwarded: referralPoints } });
         if (referralPoints > 0) {
           await tx.popularityEvent.create({
@@ -108,10 +110,11 @@ export async function register(input: { username: string; email: string; passwor
       }
     }
 
-    return { user, referral };
+    return { user, referral, inviterName };
   });
 
-  return { user, referral, tokens: await issueTokens(user.id) };
+  // Account created screen (00i / 00i1): who invited you and what they received.
+  return { user, referral, inviter: inviterName, referralPoints, tokens: await issueTokens(user.id) };
 }
 
 export async function login(email: string, password: string) {
@@ -191,4 +194,11 @@ export async function resetPassword(token: string, password: string) {
     // Signs out every device after a password change.
     prisma.refreshToken.updateMany({ where: { userId: stored.userId, revokedAt: null }, data: { revokedAt: new Date() } }),
   ]);
+}
+
+/** Public: who owns an invite code (sign-up 00h shows "Invited by {name}"). Unknown/unusable → 404. */
+export async function lookupReferral(code: string) {
+  const inviter = await prisma.user.findUnique({ where: { referralCode: code }, select: { username: true, status: true } });
+  if (!inviter || inviter.status !== 'ACTIVE') throw errors.notFound('This invite link isn’t valid');
+  return { username: inviter.username, referralPoints: await getSetting('referralPopularityPoints') };
 }
