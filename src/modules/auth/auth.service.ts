@@ -125,6 +125,8 @@ export async function login(email: string, password: string) {
   return { user: profile, tokens: await issueTokens(user.id) };
 }
 
+const REUSE_GRACE_MS = 2 * 60 * 1000;
+
 /** Rotates the refresh token. Reusing an old (already rotated) token signs out every session. */
 export async function refresh(refreshToken: string) {
   const stored = await prisma.refreshToken.findUnique({
@@ -134,6 +136,13 @@ export async function refresh(refreshToken: string) {
   if (!stored) throw new AppError(401, 'INVALID_REFRESH_TOKEN', 'Session expired, please log in again');
 
   if (stored.revokedAt) {
+    // Grace window: the app was killed (or the network dropped) after we rotated this token but before it
+    // saved the new one. A replay within 2 minutes is that, not theft — issue a fresh pair instead of
+    // signing every session out.
+    if (Date.now() - stored.revokedAt.getTime() < REUSE_GRACE_MS && stored.expiresAt > new Date()) {
+      assertActive(stored.user.status);
+      return issueTokens(stored.userId);
+    }
     await prisma.refreshToken.updateMany({ where: { userId: stored.userId, revokedAt: null }, data: { revokedAt: new Date() } });
     throw new AppError(401, 'INVALID_REFRESH_TOKEN', 'Session expired, please log in again');
   }
