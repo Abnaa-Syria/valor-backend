@@ -71,6 +71,22 @@ entriesAdminRouter.post('/:id/cancel', canManage, async (req, res) => {
   res.json({ data: { ok: true } });
 });
 
+/** Clips the admin can put against a waiting entry. */
+entriesAdminRouter.get('/:id/candidates', canManage, async (req, res) => {
+  const { id } = battleIdParamsSchema.parse(req.params);
+  const { q } = z.object({ q: z.string().trim().max(100).optional() }).parse(req.query);
+  res.json({ data: await adminBattles.adminMatchCandidates(id, q || undefined) });
+});
+
+/** Admin picks the opponent: starts the battle now. Body: { clipId }. */
+entriesAdminRouter.post('/:id/match', canManage, async (req, res) => {
+  const { id } = battleIdParamsSchema.parse(req.params);
+  const { clipId } = z.object({ clipId: z.string().min(1).max(30) }).parse(req.body);
+  const result = await adminBattles.adminMatchEntry(id, clipId);
+  await audit(req, { action: 'entry.match', entityType: 'battle', entityId: result.battleId, summary: `Matched waiting entry ${id} with clip ${clipId} by hand` });
+  res.status(201).json({ data: result });
+});
+
 // Dashboard: /api/admin/rematches
 export const rematchesAdminRouter = Router();
 

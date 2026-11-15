@@ -81,6 +81,12 @@ async function tryMatch(tx: Tx, ticket: MatchmakingTicket, votingHours: number) 
   if (rows.length === 0) return null;
 
   const opponent = await tx.matchmakingTicket.findUniqueOrThrow({ where: { id: rows[0].id } });
+  return startBattle(tx, ticket, opponent, votingHours);
+}
+
+/** Pairs two waiting tickets into a live battle (random sides) and tells both players. */
+export async function startBattle(tx: Tx, ticket: MatchmakingTicket, opponent: MatchmakingTicket, votingHours: number) {
+  const now = new Date();
   const [sideA, sideB] = Math.random() < 0.5 ? [ticket, opponent] : [opponent, ticket];
 
   const battle = await tx.battle.create({
