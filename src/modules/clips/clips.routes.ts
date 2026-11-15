@@ -78,6 +78,16 @@ router.post('/:id/comments', limits.comment, async (req, res) => {
   res.status(201).json({ data: await clipsService.addComment(req.user!.id, id, body) });
 });
 
+router.post('/:id/comments/:commentId/like', limits.like, async (req, res) => {
+  const { id, commentId } = commentParamsSchema.parse(req.params);
+  res.json({ data: await clipsService.setCommentLike(req.user!.id, id, commentId, true) });
+});
+
+router.delete('/:id/comments/:commentId/like', limits.like, async (req, res) => {
+  const { id, commentId } = commentParamsSchema.parse(req.params);
+  res.json({ data: await clipsService.setCommentLike(req.user!.id, id, commentId, false) });
+});
+
 router.delete('/:id/comments/:commentId', async (req, res) => {
   const { id, commentId } = commentParamsSchema.parse(req.params);
   await clipsService.deleteComment(req.user!.id, id, commentId);

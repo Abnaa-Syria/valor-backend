@@ -18,7 +18,7 @@ export async function awardGift(tx: Tx, giftTransactionId: string) {
 
   const gift = await tx.giftTransaction.findUniqueOrThrow({
     where: { id: giftTransactionId },
-    include: { gift: { select: { name: true, tier: true } }, sender: { select: { username: true } } },
+    include: { gift: { select: { id: true, slug: true, name: true, kind: true, tier: true, iconUrl: true } }, sender: { select: { username: true } } },
   });
 
   if (gift.popularityAwarded > 0) {
@@ -32,7 +32,15 @@ export async function awardGift(tx: Tx, giftTransactionId: string) {
   await notify(tx, gift.recipientId, 'GIFT_RECEIVED', {
     title: 'You received a gift',
     body: `${gift.sender.username} sent you ${what}${gift.battleId ? ' in your battle' : ''} (+${gift.popularityAwarded} popularity).`,
-    data: { giftTransactionId: gift.id, battleId: gift.battleId },
+    // Enough for the app's "You received a gift" screen (design 28) without another request.
+    data: {
+      giftTransactionId: gift.id,
+      battleId: gift.battleId,
+      gift: gift.gift,
+      sender: gift.sender.username,
+      quantity: gift.quantity,
+      popularity: gift.popularityAwarded,
+    },
   });
 }
 

@@ -37,6 +37,7 @@ export async function getMe(userId: string) {
       popularity: true,
       referralCode: true,
       hideReferralCount: true,
+      hideGiftCollection: true,
       createdAt: true,
       activeFrame: { select: cosmeticSelect },
       activeTheme: { select: cosmeticSelect },
@@ -63,13 +64,24 @@ export async function getMe(userId: string) {
   };
 }
 
-export async function updateMe(userId: string, input: { username?: string; hideReferralCount?: boolean }) {
+export async function updateMe(userId: string, input: { username?: string; hideReferralCount?: boolean; hideGiftCollection?: boolean }) {
   if (input.username) {
     const taken = await prisma.user.findFirst({ where: { username: input.username, id: { not: userId } }, select: { id: true } });
     if (taken) throw errors.conflict('This username is taken');
   }
   await prisma.user.update({ where: { id: userId }, data: input });
   return getMe(userId);
+}
+
+/** Invite friends screen (design 18 "Recently joined"): the latest players who joined with my link. */
+export async function listMyReferrals(userId: string, limit = 20) {
+  const rows = await prisma.referral.findMany({
+    where: { inviterId: userId, invitee: { status: { notIn: ['BANNED', 'DELETED'] } } },
+    orderBy: { createdAt: 'desc' },
+    take: limit,
+    select: { createdAt: true, pointsAwarded: true, invitee: { select: { id: true, username: true, avatarUrl: true } } },
+  });
+  return rows.map((r) => ({ player: r.invitee, joinedAt: r.createdAt, points: r.pointsAwarded }));
 }
 
 /** Saves an uploaded avatar or banner and deletes the previous file. */

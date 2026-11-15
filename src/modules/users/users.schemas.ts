@@ -20,6 +20,7 @@ export const updateUserStatusSchema = z.object({
 export const updateMeSchema = z.object({
   username: usernameSchema.optional(),
   hideReferralCount: z.boolean().optional(),
+  hideGiftCollection: z.boolean().optional(),
 });
 
 export type ListUsersQuery = z.infer<typeof listUsersQuerySchema>;

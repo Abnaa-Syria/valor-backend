@@ -177,23 +177,24 @@ model Admin {
 // ───────────────────────────── Players ─────────────────────────────
 
 model User {
-  id                String     @id @default(cuid())
-  username          String     @unique @db.VarChar(30)
-  email             String     @unique @db.VarChar(191)
-  passwordHash      String?    @db.VarChar(100) // null for accounts from an external provider (later)
-  authUid           String?    @unique @db.VarChar(128) // id from an external auth provider (later)
-  avatarUrl         String?    @db.VarChar(500)
-  bannerUrl         String?    @db.VarChar(500)
-  status            UserStatus @default(ACTIVE)
-  popularity        Int        @default(0) // cached total of popularity_events
-  referralCode      String     @unique @db.VarChar(20)
-  hideReferralCount Boolean    @default(true)
-  activeFrameId     String?
-  activeThemeId     String?
-  lastSeenAt        DateTime?
-  deletedAt         DateTime?
-  createdAt         DateTime   @default(now())
-  updatedAt         DateTime   @updatedAt
+  id                 String     @id @default(cuid())
+  username           String     @unique @db.VarChar(30)
+  email              String     @unique @db.VarChar(191)
+  passwordHash       String?    @db.VarChar(100) // null for accounts from an external provider (later)
+  authUid            String?    @unique @db.VarChar(128) // id from an external auth provider (later)
+  avatarUrl          String?    @db.VarChar(500)
+  bannerUrl          String?    @db.VarChar(500)
+  status             UserStatus @default(ACTIVE)
+  popularity         Int        @default(0) // cached total of popularity_events
+  referralCode       String     @unique @db.VarChar(20)
+  hideReferralCount  Boolean    @default(true)
+  hideGiftCollection Boolean    @default(false) // design 17: "Gifts & stickers collection" visibility
+  activeFrameId      String?
+  activeThemeId      String?
+  lastSeenAt         DateTime?
+  deletedAt          DateTime?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
 
   activeFrame      CosmeticItem?        @relation("ActiveFrame", fields: [activeFrameId], references: [id], onDelete: SetNull)
   activeTheme      CosmeticItem?        @relation("ActiveTheme", fields: [activeThemeId], references: [id], onDelete: SetNull)
@@ -211,6 +212,7 @@ model User {
   badges           UserBadge[]
   popularityEvents PopularityEvent[]
   referralsMade    Referral[]           @relation("Inviter")
+  commentLikes     CommentLike[]
   invitedVia       Referral?            @relation("Invitee")
   reports          Report[]
   idempotencyKeys  IdempotencyKey[]
@@ -294,18 +296,34 @@ model ClipLike {
 }
 
 model Comment {
-  id        String        @id @default(cuid())
-  clipId    String
-  userId    String
-  body      String        @db.VarChar(500)
-  status    CommentStatus @default(VISIBLE)
-  createdAt DateTime      @default(now())
+  id         String        @id @default(cuid())
+  clipId     String
+  userId     String
+  body       String        @db.VarChar(500)
+  status     CommentStatus @default(VISIBLE)
+  likesCount Int           @default(0)
+  createdAt  DateTime      @default(now())
 
-  clip Clip @relation(fields: [clipId], references: [id], onDelete: Cascade)
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clip  Clip          @relation(fields: [clipId], references: [id], onDelete: Cascade)
+  user  User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  likes CommentLike[]
 
   @@index([clipId, createdAt])
   @@map("comments")
+}
+
+/// A player liking a comment (design 15a / 15d heart column). One per player per comment.
+model CommentLike {
+  commentId String
+  userId    String
+  createdAt DateTime @default(now())
+
+  comment Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([commentId, userId])
+  @@index([userId])
+  @@map("comment_likes")
 }
 
 // ───────────────────── Matchmaking, battles, votes ─────────────────────

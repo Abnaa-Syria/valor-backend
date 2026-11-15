@@ -36,6 +36,11 @@ router.get('/me/badges', async (req, res) => {
   res.json({ data: await getPlayerBadges(req.user!.id) });
 });
 
+/** Players who joined with my invite link, newest first (design 18). */
+router.get('/me/referrals', async (req, res) => {
+  res.json({ data: await usersService.listMyReferrals(req.user!.id) });
+});
+
 /** Players I blocked (settings). */
 router.get('/me/blocks', async (req, res) => {
   res.json({ data: await listMyBlocks(req.user!.id) });

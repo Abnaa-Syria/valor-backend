@@ -10,7 +10,7 @@ import { createEntry, getEntry } from '../battles/matchmaking.service';
 import { cancelBattle } from '../battles/battles.service';
 import { checkBadges } from '../badges/badges.service';
 import { blockedUserIds, isBlockedBetween } from '../blocks/blocks.service';
-import { clipInclude, liveClipWhere, publicClipWhere, toClipDto } from './clip-dto';
+import { activeBattleOf, clipInclude, liveClipWhere, publicClipWhere, toClipDto } from './clip-dto';
 import { CLIPS_PREFIX } from './clip-upload';
 import { createClipSchema, type updateClipSchema } from './clips.schemas';
 import { playerSummarySelect } from '../users/player-select';
@@ -62,7 +62,7 @@ export async function createClip(userId: string, body: unknown, files: { video: 
 async function findVisibleClip(viewerId: string, clipId: string) {
   const clip = await prisma.clip.findUnique({ where: { id: clipId }, include: clipInclude });
   if (!clip || clip.status === 'REMOVED') throw errors.notFound('Clip not found');
-  const isLive = clip.tickets.length > 0 || clip.battlesAsA.length > 0 || clip.battlesAsB.length > 0;
+  const isLive = clip.tickets.length > 0 || activeBattleOf(clip) !== null;
   // A live clip is hidden from everyone but its owner, so battles stay anonymous.
   if (clip.userId !== viewerId && (isLive || clip.status !== 'READY')) throw errors.notFound('Clip not found');
   if (clip.userId !== viewerId && (await isBlockedBetween(viewerId, clip.userId))) throw errors.notFound('Clip not found');
@@ -177,6 +177,7 @@ async function likeState(userId: string, clipId: string) {
 const commentSelect = {
   id: true,
   body: true,
+  likesCount: true,
   createdAt: true,
   user: { select: playerSummarySelect },
 } satisfies Prisma.CommentSelect;
@@ -189,7 +190,37 @@ export async function listComments(viewerId: string, clipId: string, query: Pagi
     prisma.comment.findMany({ where, select: commentSelect, orderBy: { createdAt: 'desc' }, ...toSkipTake(query) }),
     prisma.comment.count({ where }),
   ]);
-  return paginated(comments.map((c) => ({ ...c, isMine: c.user.id === viewerId })), total, query);
+  const liked = new Set(
+    (
+      await prisma.commentLike.findMany({
+        where: { userId: viewerId, commentId: { in: comments.map((c) => c.id) } },
+        select: { commentId: true },
+      })
+    ).map((l) => l.commentId),
+  );
+  return paginated(
+    comments.map((c) => ({ ...c, isMine: c.user.id === viewerId, likedByMe: liked.has(c.id) })),
+    total,
+    query,
+  );
+}
+
+/** Like / unlike a comment (design 15a heart column). Idempotent; returns the new count. */
+export async function setCommentLike(userId: string, clipId: string, commentId: string, like: boolean) {
+  await findVisibleClip(userId, clipId);
+  const comment = await prisma.comment.findUnique({ where: { id: commentId }, select: { clipId: true, status: true } });
+  if (!comment || comment.clipId !== clipId || comment.status !== 'VISIBLE') throw errors.notFound('Comment not found');
+  return prisma.$transaction(async (tx) => {
+    if (like) {
+      const created = await tx.commentLike.createMany({ data: [{ commentId, userId }], skipDuplicates: true });
+      if (created.count > 0) await tx.comment.update({ where: { id: commentId }, data: { likesCount: { increment: 1 } } });
+    } else {
+      const removed = await tx.commentLike.deleteMany({ where: { commentId, userId } });
+      if (removed.count > 0) await tx.comment.update({ where: { id: commentId }, data: { likesCount: { decrement: 1 } } });
+    }
+    const { likesCount } = await tx.comment.findUniqueOrThrow({ where: { id: commentId }, select: { likesCount: true } });
+    return { likesCount, likedByMe: like };
+  });
 }
 
 export async function addComment(userId: string, clipId: string, body: string) {
@@ -198,7 +229,7 @@ export async function addComment(userId: string, clipId: string, body: string) {
     prisma.comment.create({ data: { clipId, userId, body }, select: commentSelect }),
     prisma.clip.update({ where: { id: clipId }, data: { commentsCount: { increment: 1 } } }),
   ]);
-  return { ...comment, isMine: true };
+  return { ...comment, isMine: true, likedByMe: false };
 }
 
 /** The comment's author or the clip's owner can delete it. */
