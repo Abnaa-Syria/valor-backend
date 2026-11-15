@@ -20,6 +20,10 @@ const envSchema = z.object({
   PASSWORD_RESET_URL: z.string().default('valor://reset-password'),
   // Invite links: <INVITE_BASE_URL>/<referral code>
   INVITE_BASE_URL: z.string().default('https://valor.gg/i'),
+  // Android App Links for invite links: package name + signing certificate SHA-256 fingerprints
+  // (comma-separated; add the Play / release key fingerprint before publishing).
+  ANDROID_APP_ID: z.string().default('app.valor.valor'),
+  ANDROID_CERT_SHA256: z.string().default('B9:6B:26:63:6B:69:66:8D:8E:CE:D9:6B:C4:3F:E2:7B:4A:67:48:17:C6:8D:15:8D:45:07:4C:21:30:A1:18:98'),
 
   CORS_ORIGINS: z.string().default('http://localhost:5173'),
 

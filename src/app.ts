@@ -6,6 +6,7 @@ import { env } from './config/env';
 import { logger } from './lib/logger';
 import { storage } from './lib/storage';
 import routes from './routes';
+import invitePage from './modules/invite/invite.page';
 import { errorHandler, notFoundHandler } from './middlewares/error-handler';
 
 export function createApp() {
@@ -33,6 +34,8 @@ export function createApp() {
   app.use('/uploads', express.static(storage.rootDir, { fallthrough: false, index: false, maxAge: '7d' }));
 
   app.use('/api', routes);
+  // Public invite landing page + Android App Links verification (outside /api).
+  app.use(invitePage);
 
   app.use(notFoundHandler);
   app.use(errorHandler);
