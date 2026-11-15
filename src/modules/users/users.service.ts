@@ -96,7 +96,7 @@ export async function setProfileImage(userId: string, field: 'avatar' | 'banner'
   return getMe(userId);
 }
 
-/** What other players see. Gift count stays hidden (design 16); referral count follows the player's setting. */
+/** What other players see. Gift and referral counts follow the player's visibility settings (design 17). */
 export async function getPublicProfile(viewerId: string, playerId: string) {
   if (await isBlockedBetween(viewerId, playerId)) throw errors.notFound('Player not found');
   const user = await prisma.user.findUnique({
@@ -109,9 +109,11 @@ export async function getPublicProfile(viewerId: string, playerId: string) {
       popularity: true,
       status: true,
       hideReferralCount: true,
+      hideGiftCollection: true,
       createdAt: true,
       activeFrame: { select: cosmeticSelect },
-      _count: { select: { referralsMade: true } },
+      // Only awarded gifts: a gift waiting on a live battle must not hint who is in it.
+      _count: { select: { referralsMade: true, giftsReceived: { where: { awardedAt: { not: null } } } } },
     },
   });
   if (!user || user.status === 'BANNED' || user.status === 'DELETED') throw errors.notFound('Player not found');
@@ -128,6 +130,7 @@ export async function getPublicProfile(viewerId: string, playerId: string) {
     games,
     battles,
     friendsJoined: user.hideReferralCount ? null : user._count.referralsMade,
+    giftsReceived: user.hideGiftCollection ? null : user._count.giftsReceived,
   };
 }
 
