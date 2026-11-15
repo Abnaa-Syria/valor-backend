@@ -87,7 +87,10 @@ export async function pushPending(): Promise<number> {
     if (!unread.has(n.userId)) unread.set(n.userId, await prisma.notification.count({ where: { userId: n.userId, readAt: null } }));
     // FCM data values must be strings; the app uses them to open the right screen.
     const data: Record<string, string> = { notificationId: n.id, type: n.type };
-    for (const [k, v] of Object.entries((n.data as Record<string, unknown> | null) ?? {})) if (v !== null && v !== undefined) data[k] = String(v);
+    for (const [k, v] of Object.entries((n.data as Record<string, unknown> | null) ?? {})) {
+      // Objects (e.g. the gift on GIFT_RECEIVED) go as JSON so the app can read them back.
+      if (v !== null && v !== undefined) data[k] = typeof v === 'object' ? JSON.stringify(v) : String(v);
+    }
     try {
       const res = await getMessaging(fb).sendEachForMulticast({
         tokens,
